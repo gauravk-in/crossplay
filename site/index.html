@@ -550,6 +550,7 @@
             <br><code>esptool.py --chip esp32s3 --baud 921600 write_flash 0x0 crossplay-&lt;version&gt;-x4pro-full.bin</code>
           </li>
           <li><strong>Updating an install you already have</strong> uses the app-only file instead -- <code>firmware.bin</code> for the X4 Pro, <code>firmware-sticky.bin</code> for the Sticky -- over Wi-Fi or from the SD card. The <code>-full.bin</code> is for USB only: handing it to the updater writes a bootloader into a slot meant for the application.</li>
+          <li><strong>A USB-locked X4 Pro</strong> (some third-party-store units; the serial picker never shows it) cannot be flashed over the cable at all. Install stock CrossPoint with the <a href="https://crosspointreader.com/unlocker">Xteink Unlocker</a>, copy CrossPlay's <code>firmware.bin</code> to the root of the SD card, then <strong>Settings &rarr; System &rarr; SD Card Firmware Update</strong>. Updates work over Wi-Fi from then on. <a href="https://github.com/ma-r-s/crossplay/blob/xteink/docs/install.md#a-usb-locked-x4-pro">What each refusal means</a>.</li>
         </ol>
       </details>
 
