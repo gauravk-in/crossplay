@@ -3,6 +3,4 @@
 ### What is new in 1.13.21
 
 - M5Stack PaperMono / Lite support (carries #208)
-- Notes: strike every line of a wrapped item, and never shrink a list (#265)
-- Add CrossPlay support for PaperMono
 
