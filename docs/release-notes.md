@@ -24,7 +24,7 @@ Everything above the marker is written by hand.
 ### 1.13.20
 
 - Notes: the phone page shows long items whole, and keeps a note a note
-- Notes: strike every line of a wrapped item, and never shrink a list (#265)
+- Notes: strike every line of a wrapped item, and never shrink a list
 
 ### 1.13.19
 
