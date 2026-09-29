@@ -3,3 +3,4 @@
 ### What is new in 1.13.25
 
 - Hex, the connection game: join your two edges before your opponent joins theirs. Against the device at three levels, across the table, or over PLAY NEARBY. On the Games shelf.
+
