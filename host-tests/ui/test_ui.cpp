@@ -56,6 +56,7 @@
 #include "../../src/apps_local/wallpapers/WallpapersScreens.h"
 #include "../../src/apps_local/wavelength/WavelengthScreens.h"
 #include "../../src/apps_local/wikipedia/WikipediaScreens.h"
+#include "../../src/apps_local/wordle/WordleScreens.h"
 #include "../../src/apps_local/xkcd/XkcdScreens.h"
 #include "../../src/apps_local/yahtzee/YahtzeeScreens.h"
 
@@ -1966,6 +1967,90 @@ void testConnectionsTilesShareOneSize() {
 //
 // A 31-day month starting on a Saturday is the worst case: six week rows and
 // the most days that can be live at once.
+// A day's mark sits below its number, never on it. The sparkle used to start
+// inside the number's own line, so a solved 22 read as a star over "22" (Mario,
+// in Wordle's archive, which draws this same calendar). Checked for the three
+// marks a day can carry: sparkle (solved), cross (lost), ring (started).
+void testCalendarMarksClearTheirDate() {
+  connectionsui::CalendarDay cells[42] = {};
+  for (int d = 1; d <= 30; ++d) {
+    cells[d - 1].day = static_cast<uint8_t>(d);
+    cells[d - 1].inArchive = true;
+  }
+  cells[21].played = cells[21].finished = true;                // 22: solved, sparkle
+  cells[9].played = cells[9].finished = cells[9].lost = true;  // 10: lost, cross
+  cells[4].played = true;                                      // 5: started, ring
+  connectionsui::CalendarModel model;
+  model.cells = cells;
+  Rendered out;
+  const fui::DeviceContext ctx = device();
+  const fui::InputSnapshot noInput{};
+  toybox::Frame frame(out.target, ctx, noInput, out.interactions);
+  toybox::Screen screen(frame, toybox::themeTokens());
+  const connectionsui::CalendarLayout layout = connectionsui::buildCalendar(screen, model);
+
+  // Not merely clear: a mark two pixels under its number was clear and still
+  // read as touching it (Mario, the second time). Six is the least gap asked.
+  constexpr int kClearance = 6;
+  const auto numberBottom = [&out](const char* label) {
+    for (const auto& run : out.target.texts) {
+      if (run.text == label) return run.rect.y + run.rect.height + kClearance;
+    }
+    return -1;
+  };
+  const auto cellOf = [&layout](const int index) {
+    const int step = layout.cell + layout.gap;
+    return fui::makeRect(layout.originX + (index % layout.cols) * step, layout.originY + (index / layout.cols) * step,
+                         layout.cell, layout.cell);
+  };
+  const auto inside = [](const fui::Rect& r, const int x, const int y) {
+    return x >= r.x && x < r.x + r.width && y >= r.y && y < r.y + r.height;
+  };
+
+  // Sparkle: every triangle point inside cell 22 is below its number.
+  const fui::Rect c22 = cellOf(21);
+  const int b22 = numberBottom("22");
+  int sparklePoints = 0;
+  bool sparkleClear = true;
+  for (const auto& t : out.target.triangles) {
+    for (const fui::Point p : {t.a, t.b, t.c}) {
+      if (!inside(c22, p.x, p.y)) continue;
+      ++sparklePoints;
+      if (p.y < b22) sparkleClear = false;
+    }
+  }
+  CHECK(b22 > 0 && sparklePoints > 0);
+  check(sparkleClear, "a solved day's sparkle starts below its number", __LINE__);
+
+  // Cross: both strokes of day 10's cross are below its number.
+  const fui::Rect c10 = cellOf(9);
+  const int b10 = numberBottom("10");
+  int crossEnds = 0;
+  bool crossClear = true;
+  for (const auto& l : out.target.lines) {
+    for (const fui::Point p : {l.a, l.b}) {
+      if (!inside(c10, p.x, p.y)) continue;
+      ++crossEnds;
+      if (p.y < b10) crossClear = false;
+    }
+  }
+  CHECK(b10 > 0 && crossEnds > 0);
+  check(crossClear, "a lost day's cross starts below its number", __LINE__);
+
+  // Ring: the started day's outline is below its number.
+  const fui::Rect c5 = cellOf(4);
+  const int b5 = numberBottom("5");
+  bool ringFound = false;
+  bool ringClear = true;
+  for (const auto& st : out.target.strokes) {
+    if (!inside(c5, st.rect.x, st.rect.y) || (st.rect.width == c5.width && st.rect.height == c5.height)) continue;
+    ringFound = true;
+    if (st.rect.y < b5) ringClear = false;
+  }
+  CHECK(b5 > 0 && ringFound);
+  check(ringClear, "a started day's ring starts below its number", __LINE__);
+}
+
 void testConnectionsCalendarEveryDayIsReachable() {
   connectionsui::CalendarDay cells[42] = {};
   constexpr int kLead = 6;   // 1st falls on a Saturday
@@ -14533,8 +14618,178 @@ void aNoteAsleepIsReadOnlyAndTaller() {
 
 }  // namespace notestest
 
+namespace wordletest {
+
+void buildGame(Rendered& out, const wordleui::GameModel& model, wordleui::KeyboardLayout& keys) {
+  const fui::DeviceContext ctx = device();
+  const fui::InputSnapshot noInput{};
+  toybox::Frame frame(out.target, ctx, noInput, out.interactions);
+  toybox::Screen screen(frame, toybox::themeTokens());
+  keys = wordleui::buildGame(screen, model);
+}
+
+void buildMenu(Rendered& out, const wordleui::MenuModel& model) {
+  const fui::DeviceContext ctx = device();
+  const fui::InputSnapshot noInput{};
+  toybox::Frame frame(out.target, ctx, noInput, out.interactions);
+  toybox::Screen screen(frame, toybox::themeTokens());
+  wordleui::buildMenu(screen, model);
+}
+
+bool alwaysWord(void*, const char*) { return true; }
+
+void play(wordle::Game& game, const char* word) {
+  for (int i = 0; i < 5; ++i) game.type(word[i]);
+  game.submit(alwaysWord, nullptr);
+}
+
+// Every key is found where it is drawn: the tap at the centre of each drawn
+// letter resolves to that letter, and the two wide keys to ENTER and delete.
+// The keyboard is one hit region, so this geometry is the only thing standing
+// between a tap and the wrong letter.
+void everyKeyIsWhereItIsDrawn() {
+  wordle::Game game;
+  game.start(0, "PLANT");
+  play(game, "CRANE");
+  wordleui::GameModel model;
+  model.game = &game;
+  model.date = "SEP 28";
+  Rendered out;
+  wordleui::KeyboardLayout keys;
+  buildGame(out, model, keys);
+
+  int letters = 0;
+  bool allFound = true;
+  for (const auto& run : out.target.texts) {
+    if (run.text.size() != 1 || run.rect.y < keys.top) continue;
+    const char letter = run.text[0];
+    if (letter < 'A' || letter > 'Z') continue;
+    ++letters;
+    const int cx = run.rect.x + run.rect.width / 2;
+    const int cy = run.rect.y + run.rect.height / 2;
+    if (wordleui::keyAt(keys, cx, cy) != letter) {
+      allFound = false;
+      std::printf("FAIL wordle: key %c drawn at (%d,%d) resolves to %d\n", letter, cx, cy,
+                  static_cast<int>(wordleui::keyAt(keys, cx, cy)));
+    }
+    if (run.rect.x < 0 || run.rect.x + run.rect.width > 480) allFound = false;
+  }
+  check(letters == 26, "all 26 letter keys are drawn below the grid", __LINE__);
+  check(allFound, "every drawn key resolves to its own letter, inside the panel", __LINE__);
+
+  int enters = 0;
+  int erases = 0;
+  for (const auto& blit : out.target.blits) {
+    if (blit.rect.y < keys.top) continue;
+    const char key = wordleui::keyAt(keys, blit.rect.x + blit.rect.width / 2, blit.rect.y + blit.rect.height / 2);
+    if (key == wordleui::kEnter) ++enters;
+    if (key == wordleui::kErase) ++erases;
+  }
+  check(enters == 1 && erases == 1, "the tick is ENTER and the backspace is delete", __LINE__);
+  check(wordleui::keyAt(keys, 2, keys.top + 2) == 0, "the margin beside the keys is not a key", __LINE__);
+  check(out.has(wordleui::ActionKeyboard) && !out.has(wordleui::ActionArchive) && !out.has(wordleui::ActionNext),
+        "playing, the keyboard takes taps and the end-of-game buttons are not there", __LINE__);
+  check(out.interactions.count() <= 24, "the game fits the interaction table", __LINE__);
+}
+
+// The end: the answer in the header, the result beside it, and any tap goes
+// back to the menu -- the keyboard stops taking letters.
+void aFinishedGameShowsTheAnswerAndLetsGo() {
+  wordle::Game game;
+  game.start(0, "PLANT");
+  play(game, "CRANE");
+  play(game, "PLANT");
+  wordleui::GameModel model;
+  model.game = &game;
+  model.date = "SEP 28";
+  Rendered out;
+  wordleui::KeyboardLayout keys;
+  buildGame(out, model, keys);
+  check(drewText(out, "PLANT") && drewText(out, "2 / 6"), "won: the header says the answer and the guess count",
+        __LINE__);
+  check(!drewText(out, "SEP 28"), "won: the date gives way to the result", __LINE__);
+  // The keyboard gives way to the result and where to go next.
+  check(drewText(out, "SOLVED IN 2") && drewText(out, "ARCHIVE") && drewText(out, "NEXT"),
+        "won: the result, ARCHIVE and NEXT replace the keyboard", __LINE__);
+  check(keys.keyW == 0 && !out.has(wordleui::ActionKeyboard), "won: no key is drawn or takes a letter", __LINE__);
+  bool keyLetters = false;
+  for (const auto& run : out.target.texts) {
+    if (run.text == "Q" || run.text == "Z") keyLetters = true;
+  }
+  check(!keyLetters, "won: the keyboard is gone", __LINE__);
+  check(!out.has(wordleui::ActionNext) && out.has(wordleui::ActionArchive),
+        "won with nothing left to play: NEXT is greyed and takes no tap, ARCHIVE does", __LINE__);
+  check(out.tap(240, 300).action == fui::NO_ACTION, "won: a tap on the grid does nothing", __LINE__);
+
+  model.canNext = true;
+  Rendered withNext;
+  buildGame(withNext, model, keys);
+  check(withNext.has(wordleui::ActionNext) && withNext.has(wordleui::ActionArchive),
+        "won with a day left: both buttons take a tap", __LINE__);
+  bool nextRoutes = false;
+  for (size_t i = 0; i < withNext.interactions.count(); ++i) {
+    const auto& entry = withNext.interactions.data()[i];
+    if (entry.action != wordleui::ActionNext) continue;
+    const fui::Rect r = entry.rect;
+    nextRoutes = withNext.tap(r.x + r.width / 2, r.y + r.height / 2).action == wordleui::ActionNext;
+  }
+  check(nextRoutes, "won: a tap on NEXT routes to NEXT", __LINE__);
+  model.canNext = false;
+
+  wordle::Game lost;
+  lost.start(0, "PLANT");
+  for (int i = 0; i < 6; ++i) play(lost, "CRANE");
+  Rendered lostOut;
+  model.game = &lost;
+  buildGame(lostOut, model, keys);
+  check(drewText(lostOut, "PLANT") && drewText(lostOut, "X / 6") && drewText(lostOut, "NOT SOLVED"),
+        "lost: the header still says the answer, and the result says so", __LINE__);
+}
+
+void theNotAWordLineIsDrawn() {
+  wordle::Game game;
+  game.start(0, "PLANT");
+  wordleui::GameModel model;
+  model.game = &game;
+  model.message = "Not in the word list.";
+  Rendered out;
+  wordleui::KeyboardLayout keys;
+  buildGame(out, model, keys);
+  check(drewText(out, "Not in the word list."), "the refusal is on the screen", __LINE__);
+}
+
+void theMenuOffersTodayOnlyWhenThereIsOne() {
+  wordleui::MenuModel model;
+  Rendered empty;
+  buildMenu(empty, model);
+  check(drewText(empty, "NONE YET") && drewText(empty, "GET PUZZLES"), "empty: nothing to play, one thing to do",
+        __LINE__);
+  check(empty.tap(100, 180).action != wordleui::ActionMenu || empty.tap(100, 180).value != 0,
+        "empty: the date line opens nothing", __LINE__);
+
+  model.date = "28 SEP 2026";
+  model.state = "SOLVED IN 4";
+  model.stats.played = 3;
+  model.stats.won = 2;
+  model.stats.streak = 2;
+  model.stats.wins[3] = 2;
+  model.puzzles = 1928;
+  model.upToDate = true;
+  Rendered full;
+  buildMenu(full, model);
+  check(drewText(full, "28 SEP 2026") && drewText(full, "SOLVED IN 4") && drewText(full, "ALL CAUGHT UP"),
+        "full: today, how it went, and nothing to fetch", __LINE__);
+  check(full.interactions.count() <= 24, "the menu fits the interaction table", __LINE__);
+}
+
+}  // namespace wordletest
+
 int main() {
   notestest::aNoteAsleepIsReadOnlyAndTaller();
+  wordletest::everyKeyIsWhereItIsDrawn();
+  wordletest::aFinishedGameShowsTheAnswerAndLetsGo();
+  wordletest::theNotAWordLineIsDrawn();
+  wordletest::theMenuOffersTodayOnlyWhenThereIsOne();
   notestest::aWrappedDoneItemIsStruckOnEveryLine();
   notestest::anUndoneWrappedItemIsNotStruck();
   notestest::longItemsNeverLeaveTheirRowOnAList();
@@ -14674,6 +14929,7 @@ int main() {
   testConnectionsWonBoard();
   testConnectionsTilesShareOneSize();
   testConnectionsCalendarEveryDayIsReachable();
+  testCalendarMarksClearTheirDate();
   testConnectionsMenuOrnamentOpensArchive();
   testConnectionsHowToFitsOnePage();
   testConnectionsImportSaysSomethingIsHappening();
