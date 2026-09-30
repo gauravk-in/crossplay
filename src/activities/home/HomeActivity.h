@@ -19,10 +19,9 @@ class HomeActivity final : public Activity {
   bool recentsLoading = false;
   bool recentsLoaded = false;
   bool firstRenderDone = false;
-  // --- fork-local seam ---------------------------------------------------
-  // Upstream hides this row until a catalog is configured, which means a fresh
-  // install shows no entry point at all: the only way in is Settings -> OPDS
-  // Drawn row spacing, so the touch grid hit-tests the same pitch it drew.
+  bool hasOpdsServers = false;
+  // fork-local seam: drawn row spacing, so the touch grid hit-tests the same
+  // pitch it drew.
   int menuSpacingRendered = 0;
   bool coverRendered = false;      // Track if cover has been rendered once
   bool coverBufferStored = false;  // Track if cover buffer is stored

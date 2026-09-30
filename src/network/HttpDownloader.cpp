@@ -80,7 +80,7 @@ constexpr unsigned long ABORT_PUMP_INTERVAL_MS = 50;
 // which is the whole reason Cancel used to be dead until the first body byte.
 // The caller pumps input from its progress callback, so running that here makes
 // the button live during connect and during any server-side work before the
-// response starts (the Get Books catalog optimizes each EPUB on demand, which
+// response starts (a catalog that converts a book on demand, which
 // is seconds).
 bool abortPoll(Sink& sink, unsigned long& lastPumpMs) {
   const unsigned long now = millis();

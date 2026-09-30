@@ -90,12 +90,9 @@ the X4 Pro was targeted and nothing depended on it.
 ## 3. What we actually use
 
 Counted across `src/apps_local/`, excluding the shared modules that are not apps
-(`link`, `player`, `sample`, `ui`, `bridge`). **That scope is not the shelf.**
-GET BOOKS is on the shelf and its activity is upstream's
-`src/activities/browser/OpdsBookBrowserActivity.cpp`, outside `apps_local`
-entirely; it reads Back, Confirm and Left, so the shelf's real Confirm and
-Left/Right figures are each one higher than the table below. The table counts
-the directories this fork owns, which is the question this section asks.
+(`link`, `player`, `sample`, `ui`, `bridge`). Every app on the shelf lives
+there since GET BOOKS was retired (2026-09-30), so the table is also the
+shelf's.
 
 `host-tests/docsclaims/` walks the same directories and fails when these numbers
 drift. To see it by hand:

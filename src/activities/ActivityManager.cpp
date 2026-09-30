@@ -384,9 +384,13 @@ void ActivityManager::goToLibrary() {
 }
 
 void ActivityManager::goToBrowser() {
-  // Which catalog to open is the browser's rule, and it is written once there
-  // because the APPS row uses the same factory.
-  replaceActivity(OpdsBookBrowserActivity::create(renderer, mappedInput));
+  const auto& servers = OPDS_STORE.getServers();
+  // Skip the server picker when there's only one server configured
+  if (servers.size() == 1) {
+    replaceActivity(std::make_unique<OpdsBookBrowserActivity>(renderer, mappedInput, servers[0]));
+  } else {
+    replaceActivity(std::make_unique<OpdsServerListActivity>(renderer, mappedInput, true));
+  }
 }
 
 void ActivityManager::goToReader(std::string path, const bool allowFastInitialRefresh) {

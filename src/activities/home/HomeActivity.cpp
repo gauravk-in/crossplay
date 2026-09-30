@@ -37,7 +37,7 @@ int HomeActivity::upstreamMenuRows() const {
   // but it is why this counts the row and that function does not.)
   const auto& metrics = UITheme::getInstance().getMetrics();
   const bool continueRow = metrics.homeContinueReadingInMenu && !recentBooks.empty();
-  return 4 + (continueRow ? 1 : 0);
+  return 4 + (hasOpdsServers ? 1 : 0) + (continueRow ? 1 : 0);
 }
 
 int HomeActivity::getMenuItemCount() const {
@@ -49,6 +49,9 @@ int HomeActivity::getMenuItemCount() const {
   int count = 4 + shelf::folderCount();  // File Browser, Library, File transfer, Settings, + ours
   if (!recentBooks.empty()) {
     count += recentBooks.size();
+  }
+  if (hasOpdsServers) {
+    count++;
   }
   return count;
 }
@@ -133,12 +136,13 @@ void HomeActivity::loadRecentCovers(int coverHeight) {
 void HomeActivity::onEnter() {
   Activity::onEnter();
 
+  hasOpdsServers = OPDS_STORE.hasServers();
+
   const auto& metrics = UITheme::getInstance().getMetrics();
   loadRecentBooks(metrics.homeRecentBooksCount);
 
   const auto base = static_cast<int>(recentBooks.size());
-  selectorIndex =
-      initialMenuItem == HomeMenuItem::NONE ? 0 : base + menuItemToIndex(initialMenuItem, /*hasOpdsUrl=*/false);
+  selectorIndex = initialMenuItem == HomeMenuItem::NONE ? 0 : base + menuItemToIndex(initialMenuItem, hasOpdsServers);
 
   // fork-local seam: goHome() restores the selection by matching the departing
   // activity's name against HomeMenuItem, which cannot know about shelf rows,
@@ -210,10 +214,7 @@ void HomeActivity::loop() {
       return;
     }
     const int menuIndex = selectorIndex - static_cast<int>(recentBooks.size());
-    // Get Books moved into the APPS folder, so Home never draws its row.
-    // Upstream's helpers still take the flag; they stay byte-identical and
-    // merge cleanly, and false simply removes the row from their arithmetic.
-    switch (indexToMenuItem(menuIndex, /*hasOpdsUrl=*/false)) {
+    switch (indexToMenuItem(menuIndex, hasOpdsServers)) {
       case HomeMenuItem::FILE_BROWSER:
         onFileBrowserOpen();
         break;
@@ -346,12 +347,10 @@ void HomeActivity::render(RenderLock&&) {
                                         tr(STR_SETTINGS_TITLE)};
   std::vector<UIIcon> menuIcons = {Folder, Library, Transfer, Settings};
 
-  // fork-local seam: upstream draws an OPDS row here when servers are
-  // configured. The fork does not -- Get Books lives in the APPS folder, and
-  // both dispatch helpers below are called with hasOpdsUrl=false to match. A
-  // sync that takes upstream's insertion draws a row the dispatch does not
-  // know about, which shifts every shelf folder by one and opens the wrong
-  // game. Leave it out; see the comment on indexToMenuItem() below.
+  if (hasOpdsServers) {
+    menuItems.insert(menuItems.begin() + 2, tr(STR_OPDS_BROWSER));
+    menuIcons.insert(menuIcons.begin() + 2, Blocks);
+  }
 
   if (metrics.homeContinueReadingInMenu && !recentBooks.empty()) {
     // Insert Continue Reading at the top if enabled in theme
@@ -373,7 +372,7 @@ void HomeActivity::render(RenderLock&&) {
   // opened. drawButtonMenu lays rows at a fixed pitch and ignores the rect
   // height, so a row that does not fit is drawn off-screen and simply is not
   // there -- and the home menu does not scroll, so it cannot be reached at all.
-  // APPS is the last row, which is how Get Books (inside it) would vanish.
+  // APPS is the last row, which is how an app inside it would vanish.
   //
   // Only the row GAPS give. The cover tile keeps its full height: its art is
   // the point of it, and the gaps are generous enough to lose a few pixels

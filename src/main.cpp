@@ -649,11 +649,6 @@ void setup() {
   I18N.setLanguage(static_cast<Language>(SETTINGS.language));
   KOREADER_STORE.loadFromFile();
   OPDS_STORE.loadFromFile();
-  // First boot (or first boot after upgrading into this feature) gets the
-  // public catalogs, so Get Books works without any setup.
-  OPDS_STORE.seedDefaultCatalogs();
-  // Optional provisioning file at the card root; see OpdsServerStore.h.
-  OPDS_STORE.importSeedFile();
   UITheme::getInstance().reload();
   ButtonNavigator::setMappedInputManager(mappedInputManager);
   // Frontlight PWM up (no-op on boards without one). Brightness and warmth are

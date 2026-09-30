@@ -104,11 +104,11 @@ edited.
 | --- | --- |
 | [`guesswho.md`](guesswho.md) | There is no `src/apps_local/guesswho/`. The doc talks the idea down to the reason it does not work: the faces are hashes, and hashes have no askable attributes. |
 
-## Eight things on the shelf have no doc of their own
+## Seven things on the shelf have no doc of their own
 
-Battleship, Connections, Solitaire, Insider, Hacker News, xkcd, Wallpapers and
-Get Books. Some have auxiliary records here (a format, a plan, a flow) and Get
-Books has nothing at all; none has a file saying what the app is. That is a gap
+Battleship, Connections, Solitaire, Insider, Hacker News, xkcd and Wallpapers.
+Some have auxiliary records here (a format, a plan, a flow); none has a file
+saying what the app is. That is a gap
 rather than a decision. To check the number, read `Shelf.cpp`'s `kGames` and
 `kApps` against the two sections above that say what a thing IS -- "What an app
 is" and "The rules a game implements". A format or a plan is not a doc for the

@@ -3168,7 +3168,7 @@ void testShelfFolderMarksNoRow() {
   constexpr int kCount = 5;
   const freeink::Icon* const palette[kCount] = {&icon_study_32, &icon_hackernews_32, &icon_xkcd_32, &icon_games_32,
                                                 &icon_apps_32};
-  const char* titles[kCount] = {"STUDY", "HACKER NEWS", "XKCD", "GET BOOKS", "INSTAPAPER"};
+  const char* titles[kCount] = {"STUDY", "HACKER NEWS", "XKCD", "WALLPAPERS", "INSTAPAPER"};
   fui::ListItem items[kCount] = {};
   for (int i = 0; i < kCount; ++i) {
     items[i].label = titles[i];
