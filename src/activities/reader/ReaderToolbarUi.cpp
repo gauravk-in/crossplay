@@ -39,6 +39,8 @@ constexpr int kToolCount = 3;
 constexpr int kPanelHeightPercent = 62;
 // Cap the sheet may grow to when rounding the list area up to a whole row.
 constexpr int kPanelHeightMaxPercent = 72;
+// Landscape has less vertical room; leave a narrow page strip for tap-to-dismiss.
+constexpr int kLandscapePanelHeightPercent = 88;
 }  // namespace
 
 ReaderToolbarUi::ReaderToolbarUi(GfxRenderer& renderer) : UiAppHost(renderer) {}
@@ -230,25 +232,23 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   const int16_t titleH = screen.target().lineHeight(tokens.titleText.font);
   const int16_t rowH =
       model_.denseRows ? static_cast<int16_t>(UITheme::getInstance().getMetrics().listRowHeight) : tokens.rowHeight;
-  // The gap the list will ACTUALLY draw with, asked of the SDK rather than
-  // assumed. ListProps::rowGap defaults to the -1 sentinel and this panel never
-  // sets it, so Screen::list() resolves it through resolveListProps(), which
-  // raises it to theme.listTouchRowGap on a touch board. Sizing the sheet from
-  // the raw tokens.listRowGap reserved 0 while the list drew 6: a six-row panel
-  // came out 30px shorter than its own contents on every touch device, and the
-  // nav paginated on a stride the renderer did not use. Button-only boards keep
-  // 0 and were always exact, which is why the PR that added this panel -- "Re-
-  // Enable toolbar reader menu on button-only devices" -- shipped green.
-  // host-tests/readersheet pins both boards. Card #546.
-  fui::ListProps gapProbe;
-  gapProbe.rowHeight = rowH;
-  const int16_t rowGap = screen.resolveListProps(gapProbe).rowGap;
+  // The gap is handed to the list explicitly below (listProps_.rowGap), so the
+  // sheet is sized with the gap the list draws. Before upstream set it, the list
+  // resolved a -1 sentinel to theme.listTouchRowGap on touch boards while the
+  // sheet reserved tokens.listRowGap: a six-row panel came out 30px short on
+  // every touch device. host-tests/readersheet pins panelGeometry. Card #546.
+  const int16_t rowGap = model_.denseRows ? tokens.listRowGap : std::max(tokens.listRowGap, tokens.listTouchRowGap);
   const int16_t grabberBand =
       static_cast<int16_t>(sheetProps.grabberMargin + sheetProps.grabberHeight + sheetProps.grabberInset);
   const int16_t chrome =
       static_cast<int16_t>(grabberBand + titleH + tokens.spaceMd + tokens.spaceSm + kToolRowH + tokens.spaceSm);
-  const readerpanel::Geometry geo = readerpanel::panelGeometry(safe.height, rowH, rowGap, chrome, model_.itemCount,
-                                                               kPanelHeightPercent, kPanelHeightMaxPercent);
+  // Landscape has less height to share, so upstream gives the panel a larger
+  // share of it there (#3748).
+  const bool landscape = safe.width > safe.height;
+  const readerpanel::Geometry geo =
+      readerpanel::panelGeometry(safe.height, rowH, rowGap, chrome, model_.itemCount,
+                                 landscape ? kLandscapePanelHeightPercent : kPanelHeightPercent,
+                                 landscape ? kLandscapePanelHeightPercent : kPanelHeightMaxPercent);
   screen.sheet(sheetProps, static_cast<int16_t>(geo.sheetHeight));
   // No blanket side inset: Screen::list() draws in the content band, and the
   // scroll track must reach the sheet's edge like a full-screen list's does.
@@ -274,6 +274,10 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
   listProps_.action = ACTION_ROW;
   listProps_.inputMask = fui::InputTouch;  // physical buttons stay with the reader
   listProps_.rowHeight = rowH;
+  listProps_.rowGap = rowGap;
+  listProps_.toggleCheckbox = true;
+  listProps_.toggleWidth = 28;
+  listProps_.toggleHeight = 28;
   // The label column starts flush with the panel title (no list-side padding
   // on top of the sheet's own inset). Body-size text: small reads condensed
   // and the taller row doubles as the tap target.
@@ -302,6 +306,7 @@ void ReaderToolbarUi::buildPanel(UiScreen& screen) {
     fui::ListItem item;
     item.label = windowLabels_[i].c_str();
     item.value = windowValues_[i].empty() ? nullptr : windowValues_[i].c_str();
+    if (model_.rowCheckbox) model_.rowCheckbox(model_.rowCheckboxContext, index, item);
     item.actionValue = static_cast<int16_t>(index);
     windowItems_[i] = item;
   }

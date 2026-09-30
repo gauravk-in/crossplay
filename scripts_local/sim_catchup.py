@@ -587,6 +587,63 @@ def main(env):
         marker="HalSystem::panicReasonRecorded",
     )
 
+    # The 2026-09-30 sync brought CrossPoint's SD plugin system, whose web-server
+    # code the simulator package (20e73803, the same day) does not compile yet.
+    # Three gaps, each stubbed to the honest host answer rather than a pretend
+    # success. The fourth, ArduinoJson reading a String, is a define in
+    # platformio.sim.ini: the simulator's String was written for ArduinoJson's
+    # Arduino-string mode (its concat() says so) but nothing turned it on.
+    #
+    # Arduino's WebServer keeps parsed request arguments in _currentArgs and
+    # _postArgs, and CrossPointHttpServer frees them between requests to hand
+    # the memory back to TLS. The host shim keeps its arguments in its own Impl,
+    # so these stay empty and freeing them is a no-op.
+    patch(
+        src / "WebServer.h",
+        "  HTTPUpload &upload();\n\nprivate:\n  struct Impl;",
+        "  HTTPUpload &upload();\n\n"
+        "protected:\n"
+        "  // sim-catchup: see scripts_local/sim_catchup.py (SD plugins, 2026-09-30).\n"
+        "  struct RequestArgument {\n    String key;\n    String value;\n  };\n"
+        "  RequestArgument *_currentArgs = nullptr;\n"
+        "  int _currentArgCount = 0;\n"
+        "  RequestArgument *_postArgs = nullptr;\n"
+        "  int _postArgsLen = 0;\n\n"
+        "private:\n  struct Impl;",
+        "WebServer request-argument members",
+        marker="_currentArgCount",
+    )
+    # The plugin endpoints walk a String character by character.
+    patch(
+        src / "WString.h",
+        "  size_t length() const { return s.length(); }",
+        "  size_t length() const { return s.length(); }\n"
+        "  const char *begin() const { return s.c_str(); }\n"
+        "  const char *end() const { return s.c_str() + s.length(); }",
+        "String::begin/end (range-for)",
+        marker="const char *begin() const",
+    )
+    # lib/TrustedTime (same sync) sets the clock with settimeofday(). The ESP32
+    # Arduino core reaches <sys/time.h> through Arduino.h; the simulator's
+    # Arduino.h does not, and on a macOS host nothing else declares it.
+    patch(
+        src / "Arduino.h",
+        "#include <cstdlib>\n",
+        "#include <cstdlib>\n#include <sys/time.h>\n",
+        "Arduino.h includes <sys/time.h> (settimeofday)",
+        marker="<sys/time.h>",
+    )
+    # /api/status reports the factory MAC when the chip has one. A host has no
+    # eFuse, so the honest answer is "none" and the field is simply left out.
+    patch(
+        src / "HalGPIO.h",
+        "  bool hasTouch() const;",
+        "  bool hasTouch() const;\n"
+        "  bool getFactoryMac(char (&)[18]) const { return false; }",
+        "HalGPIO::getFactoryMac (none on a host)",
+        marker="getFactoryMac",
+    )
+
     # -- the seam, checked rather than remembered -------------------------------
     #
     # lib/hal/HalStorage.h declares one surface; the simulator ships a SECOND
