@@ -30,7 +30,11 @@ void UITheme::reload() {
   setTheme(themeType);
 }
 
-bool UITheme::supportsCoverGrid() { return HalMemory::getPsramHeap().totalBytes > 0; }
+// fork-local seam: Cover Grid's home is a fixed five-icon tab bar with no slot
+// for the shelf's GAMES and APPS rows, so on CrossPlay it would hide every game
+// and app. Off until the tab bar can carry them; a saved COVER_GRID falls back
+// to Lyra through setTheme() below, and the Settings list drops the option.
+bool UITheme::supportsCoverGrid() { return false; }
 
 bool UITheme::hasCoverGridHome() { return SETTINGS.uiTheme == CrossPointSettings::COVER_GRID && supportsCoverGrid(); }
 
