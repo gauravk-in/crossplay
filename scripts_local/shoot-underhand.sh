@@ -17,10 +17,10 @@ source "$REPO/scripts_local/lib-sim.sh"
 DEST="${1:-$REPO/site/assets/shots/underhand.png}"
 
 SEED="$(mktemp -d)/underhand-seed"
-c++ -std=c++17 -Isrc/apps_local/underhand -Ilib/JsonParser tools_local/underhand/seed.cpp \
+c++ -std=c++17 -Isrc/apps_local/underhand -Ifreeink-sdk/libs/network/JsonSax/include tools_local/underhand/seed.cpp \
   src/apps_local/underhand/UnderhandCards.cpp src/apps_local/underhand/UnderhandEngine.cpp \
   src/apps_local/underhand/UnderhandSave.cpp src/apps_local/underhand/UnderhandView.cpp \
-  lib/JsonParser/StreamingJsonParser.cpp -o "$SEED"
+  freeink-sdk/libs/network/JsonSax/src/StreamingJsonParser.cpp -o "$SEED"
 
 # The agent's own card, the one sim-shot.sh drives. Never Mario's fs_mario.
 CARD="$REPO/fs_agent/.crosspoint"

@@ -222,7 +222,9 @@ int token(toybox::Screen& screen, int x, int midY, const view::Token& t, char si
     if (draw) icon(screen, rect(at, midY - kTokenIcon / 2, kTokenIcon, kTokenIcon), *kIcon24[resource], colour);
     at += kTokenIcon;
   };
-  auto word = [&](const char* text) {
+  // Not `word`: Arduino.h defines word(...) as a macro, and the header chain
+  // reaches it on the device since the 2026-09-30 sync.
+  auto label = [&](const char* text) {
     const int width = measure(screen, text);
     if (draw) small(screen, rect(at, midY - 15, width + 2, 30), text, fui::TextAlign::Left, colour);
     at += width + 2;
@@ -234,12 +236,12 @@ int token(toybox::Screen& screen, int x, int midY, const view::Token& t, char si
       break;
     case view::Token::Either:
       symbol(underhand::Cultist);
-      word("/");
+      label("/");
       symbol(underhand::Prisoner);
       break;
     case view::Token::Random:
       at += 3;
-      word("AT RANDOM");
+      label("AT RANDOM");
       break;
   }
   return at - x;

@@ -20,7 +20,7 @@ constexpr size_t MAX_TOKEN_FILE_SIZE = 2 * 1024;
 freeink::SecureHttpClient* openClient(freeink::SecureHttpClient* session, freeink::SecureHttpClient& tmp,
                                       const std::string& url, const pluginhttp::Headers& headers) {
   freeink::SecureHttpClient& http = session ? *session : tmp;
-  http.setUserAgent("CrossPoint");
+  http.setUserAgent("CrossPlay");
   // Same trust posture as every other SecureNet consumer: no CA bundle ships
   // with the transport, so verification is skipped; traffic stays encrypted.
   http.setInsecure();

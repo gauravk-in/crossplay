@@ -276,16 +276,20 @@ check(not missing, "every language defines the wordmark", ", ".join(missing))
 
 # ---------------------------------------------------------------------------
 # PART THREE. The names a person reads without opening the device. Located by
-# grep so a moved constant is still checked, and BOTH User-Agent call sites are
-# covered -- the header is set two different ways in one file.
+# grep so a moved constant is still checked, and BOTH ways of setting the
+# User-Agent are covered. Since the 2026-09-30 sync every fetch goes through
+# SecureHttpClient::setUserAgent (upstream deleted the esp_http_client
+# transport), so the raw-header form is no longer required to exist -- but one
+# that comes back saying CrossPoint still fails.
 # ---------------------------------------------------------------------------
-def literal_of(pattern, label):
+def literal_of(pattern, label, required=True):
     out = subprocess.run(
         ["grep", "-rhoE", pattern, os.path.join(root, "src"), os.path.join(root, "lib")],
         capture_output=True, text=True,
     ).stdout.strip().splitlines()
-    check(bool(out), f"{label} is still defined somewhere",
-          "grep found nothing -- has it been renamed away?")
+    if required:
+        check(bool(out), f"{label} is still defined somewhere",
+              "grep found nothing -- has it been renamed away?")
     for line in out:
         check("crosspoint" not in line.lower(), f"{label} does not say CrossPoint", line.strip())
 
@@ -294,7 +298,7 @@ literal_of(r'AP_SSID *= *"[^"]*"', "the Wi-Fi hotspot name")
 literal_of(r'(AP_)?HOSTNAME *= *"[^"]*"', "the mDNS name shown on screen")
 literal_of(r'DEVICE_NAME\[\] *= *"[^"]*"', "the name a sync server shows")
 literal_of(r'setUserAgent\("[^"]*"', "the HTTP User-Agent (setUserAgent)")
-literal_of(r'"User-Agent", *"[^"]*"', "the HTTP User-Agent (esp_http_client)")
+literal_of(r'"User-Agent", *"[^"]*"', "the HTTP User-Agent (raw header)", required=False)
 literal_of(r'info \+= "CrossP[^"]*"', "the crash report header")
 
 # ---------------------------------------------------------------------------

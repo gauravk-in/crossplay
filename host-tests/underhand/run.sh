@@ -12,10 +12,13 @@ cd "$(dirname "$0")"
 BUILD_DIR="${TMPDIR:-/tmp}/$(basename "${CXX:-c++}")-underhand-tests-$(cd ../.. && pwd | cksum | cut -d" " -f1)"
 mkdir -p "$BUILD_DIR"
 SRC=../../src/apps_local/underhand
-JSON=../../lib/JsonParser
+# StreamingJsonParser moved from lib/JsonParser into the SDK's JsonSax in the
+# 2026-09-30 sync; the device links it through the JsonSax lib_dep.
+JSONSAX=../../freeink-sdk/libs/network/JsonSax
+JSON=$JSONSAX/include
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -O2 -I$SRC -I$JSON \
   test_underhand.cpp $SRC/UnderhandCards.cpp $SRC/UnderhandEngine.cpp $SRC/UnderhandSave.cpp $SRC/UnderhandView.cpp \
-  $JSON/StreamingJsonParser.cpp \
+  $JSONSAX/src/StreamingJsonParser.cpp \
   -o "$BUILD_DIR/test_underhand"
 # The seed tool links the same view and engine: a change to either that
 # breaks it fails here rather than the next time someone needs a screenshot.

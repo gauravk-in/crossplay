@@ -26,4 +26,3 @@ inline freeink::ui::StyleSet uiButtonStyles() {
   }
   return button;
 }
-
