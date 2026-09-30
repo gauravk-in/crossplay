@@ -11,6 +11,7 @@
 #include <WiFi.h>
 
 #include "CrossPointSettings.h"
+#include "DevMode.h"
 #include "MappedInputManager.h"
 #include "SilentRestart.h"
 #include "activities/network/WifiSelectionActivity.h"
@@ -71,7 +72,9 @@ void OpdsBookBrowserActivity::onExit() {
   entries.clear();
   navigationHistory.clear();
 
-  if (WiFi.getMode() != WIFI_MODE_NULL) {
+  // fork-local seam: not ours to put down if Developer Mode brought it up.
+  // This branch reboots the device, which with dev mode on reads as a crash.
+  if (WiFi.getMode() != WIFI_MODE_NULL && !devmode::holdsRadio()) {
     WiFi.disconnect(false);
     delay(30);
     silentRestart();
