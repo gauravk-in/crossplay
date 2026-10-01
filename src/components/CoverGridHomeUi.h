@@ -60,5 +60,8 @@ class CoverGridHomeUi final : public UiAppHost {
   freeink::ui::CoverGridProps grid;
   freeink::ui::Rect gridBounds{};
   freeink::ui::TabBarProps tabs;
-  std::array<freeink::ui::TabItem, 5> tabItems;
+  // fork-local seam: room for the shelf's folders (GAMES, APPS) after
+  // upstream's five tabs. See drawTabs().
+  static constexpr int SHELF_TABS = 2;
+  std::array<freeink::ui::TabItem, 5 + SHELF_TABS> tabItems;
 };

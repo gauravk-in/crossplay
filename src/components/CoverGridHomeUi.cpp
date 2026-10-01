@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <utility>
 
+#include "../apps_local/Shelf.h"  // fork-local seam
 #include "MappedInputManager.h"
 #include "UITheme.h"
 #include "icons/blocks.h"
@@ -15,6 +16,7 @@
 #include "icons/folder.h"
 #include "icons/library.h"
 #include "icons/settings2.h"
+#include "icons/shelfIcons.h"  // fork-local seam
 #include "icons/transfer.h"
 #include "util/BookProgress.h"
 
@@ -276,6 +278,18 @@ void CoverGridHomeUi::drawTabs(UiScreen& screen, fui::Rect rect) {
     tab.label = nullptr;
     ++count;
   }
+  // fork-local seam: the shelf's folders follow upstream's tabs. A tab's value
+  // is its menu index, and HomeActivity dispatches anything past upstream's
+  // rows to shelf::openFolder(), so these open GAMES and APPS with no other
+  // change. The classic home appends the same folders in the same order.
+  const int shelfTabs = std::min(shelf::folderCount(), SHELF_TABS);
+  for (int i = 0; i < shelfTabs; ++i) {
+    auto& tab = tabItems[count];
+    tab.value = books->size() + count;
+    tab.selected = selected == tab.value;
+    tab.label = nullptr;
+    ++count;
+  }
   tabs.tabs = tabItems.data();
   tabs.count = count;
   tabs.layout = fui::TabBarLayout::SpaceBetween;
@@ -286,6 +300,14 @@ void CoverGridHomeUi::drawTabs(UiScreen& screen, fui::Rect rect) {
   tabs.iconPainter = [](fui::DrawTarget&, fui::Rect iconRect, const fui::TabItem& tab, uint8_t, void* user) {
     const auto& self = *static_cast<CoverGridHomeUi*>(user);
     const int index = tab.value - static_cast<int>(self.books->size());
+    // fork-local seam: past upstream's tabs come the shelf's folders.
+    const int upstreamTabs = self.hasOpds ? 5 : 4;
+    if (index >= upstreamTabs) {
+      const UIIcon folder = shelf::folders()[index - upstreamTabs].icon;
+      self.renderer.drawIcon(folder == UIIcon::Games ? ShelfGamesIcon : ShelfAppsIcon, iconRect.x, iconRect.y,
+                             iconRect.width);
+      return true;
+    }
     const int icon = !self.hasOpds && index >= 2 ? index + 1 : index;
     self.renderer.drawIcon(ICONS[icon], iconRect.x, iconRect.y, iconRect.width);
     return true;
