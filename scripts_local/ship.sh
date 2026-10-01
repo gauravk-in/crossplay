@@ -191,6 +191,28 @@ if [ "$BASE" != "$TRUNK" ]; then
         git rebase origin/xteink && ./scripts_local/check.sh --committed"
 fi
 
+# A BRANCH THAT MERGES HISTORY TRUNK DOES NOT HAVE IS MERGED, NOT SQUASHED.
+# That is an upstream sync: its merge commit's second parent is CrossPoint's
+# develop, and a squash drops that parent. xteink would then hold upstream's
+# changes with none of its history, the merge base with crosspoint/develop
+# would not advance, and the next sync would merge every one of these
+# commits again, re-conflicting on every resolution made here. It would also
+# move every "who owns this line" answer that asks the merge base
+# (sync-damage-lore). Detected structurally, with no fetch: a merge on the
+# branch whose other parent is not already in trunk. Merging trunk into a
+# branch does not count, since that parent is in trunk. The merge commit
+# GitHub makes has the branch tip's tree (the branch is current, checked
+# above), and release_notes.py walks --first-parent, so the pull request is
+# still one landing and one note line. First seen on the 2026-09-30 sync,
+# the first since this script replaced the autorelease.
+METHOD=squash
+for m in $(git rev-list --merges "$TRUNK"..HEAD); do
+  for p in $(git rev-list --parents -n 1 "$m" | cut -d' ' -f3-); do
+    git merge-base --is-ancestor "$p" "$TRUNK" || METHOD=merge
+  done
+done
+[ "$METHOD" = merge ] && say "  this branch merges history xteink does not have (an upstream sync): landing with a merge commit, not a squash"
+
 # The squash goes through GitHub so the pull request ends up MERGED with its
 # mergeCommit set; release_notes.py maps commits to pull requests by that oid
 # and by nothing else. No pull request, no mapping, no notes.
@@ -430,7 +452,7 @@ fi
 step "land"
 
 if [ "$DRY" = 1 ]; then
-  say "   would: gh pr merge $PR_NUMBER --squash"
+  say "   would: gh pr merge $PR_NUMBER --$METHOD"
   say "   would: compare the new trunk tree against $(git rev-parse --short HEAD)'s"
 else
   BRANCH_HEAD="$(git rev-parse HEAD)"
@@ -454,7 +476,11 @@ else
         git merge origin/xteink && git push && ./scripts_local/ship.sh"
     fi
   fi
-  run "gh pr merge '$PR_NUMBER' --repo ma-r-s/crossplay --squash --delete-branch=false"
+  if [ "$METHOD" = merge ]; then
+    run "gh pr merge '$PR_NUMBER' --repo ma-r-s/crossplay --merge --delete-branch=false"
+  else
+    run "gh pr merge '$PR_NUMBER' --repo ma-r-s/crossplay --squash --delete-branch=false"
+  fi
   run "git fetch -q origin xteink"
   TRUNK_NEW="$(git rev-parse origin/xteink)"
   # SAME FIRMWARE, NOT SAME TREE. crossplay-emulator.yml commits
