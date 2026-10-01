@@ -21,6 +21,10 @@ Everything above the marker is written by hand.
 
 <!-- releases, newest first -->
 
+### 1.13.28
+
+- Sync CrossPoint develop (50 commits), retire Get Books
+
 ### 1.13.27
 
 - Wordle: the daily word, in Connections' shape (#202)
