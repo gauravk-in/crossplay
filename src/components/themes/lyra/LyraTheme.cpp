@@ -311,7 +311,9 @@ void LyraTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
 }
 
 void LyraTheme::drawEmptyRecents(const GfxRenderer& renderer, const Rect rect) const {
-  constexpr int padding = 48;
+  // fork-local seam: on the menu's icon column (drawButtonMenu starts its
+  // icons 16px into a row inset by the side padding), not 12px right of it.
+  const int padding = LyraMetrics::values.contentSidePadding + 16;
   renderer.drawText(UI_12_FONT_ID, rect.x + padding,
                     rect.y + rect.height / 2 - renderer.getLineHeight(UI_12_FONT_ID) - 2, tr(STR_NO_OPEN_BOOK), true,
                     EpdFontFamily::BOLD);
@@ -320,15 +322,16 @@ void LyraTheme::drawEmptyRecents(const GfxRenderer& renderer, const Rect rect) c
 
 void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
-                               const std::function<UIIcon(int index)>& rowIcon, const int rowSpacing) const {
-  // -1 means "use this theme's own spacing"; HomeActivity passes a tighter
-  // value when seven rows would otherwise not fit.
+                               const std::function<UIIcon(int index)>& rowIcon, const int rowSpacing,
+                               const int rowHeight) const {
+  // -1 means "use this theme's own"; HomeActivity passes tighter values when
+  // its rows would otherwise run off the panel (fork-local seam).
   const int spacing = rowSpacing >= 0 ? rowSpacing : LyraMetrics::values.menuSpacing;
+  const int height = rowHeight > 0 ? rowHeight : LyraMetrics::values.menuRowHeight;
   for (int i = 0; i < buttonCount; ++i) {
     int tileWidth = rect.width - LyraMetrics::values.contentSidePadding * 2;
     Rect tileRect =
-        Rect{rect.x + LyraMetrics::values.contentSidePadding,
-             rect.y + i * (LyraMetrics::values.menuRowHeight + spacing), tileWidth, LyraMetrics::values.menuRowHeight};
+        Rect{rect.x + LyraMetrics::values.contentSidePadding, rect.y + i * (height + spacing), tileWidth, height};
 
     const bool selected = selectedIndex == i;
 
@@ -340,7 +343,7 @@ void LyraTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
     const char* label = labelStr.c_str();
     int textX = tileRect.x + 16;
     const int lineHeight = renderer.getLineHeight(UI_12_FONT_ID);
-    const int textY = tileRect.y + (LyraMetrics::values.menuRowHeight - lineHeight) / 2;
+    const int textY = tileRect.y + (height - lineHeight) / 2;
 
     if (rowIcon != nullptr) {
       UIIcon icon = rowIcon(i);

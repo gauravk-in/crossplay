@@ -30,6 +30,16 @@ namespace fui = freeink::ui;
 
 namespace {
 constexpr int SIDE_PADDING = 12;
+// fork-local seam: the position readout sits on the list rows' right edge
+// (the theme's list inset), not on a margin of its own; and on touch boards,
+// where no button hints are drawn and the band they leave is zero, it keeps a
+// margin above the glass's bottom edge it used to sit on.
+int readoutEdgeMargin(const ThemeMetrics& metrics) { return metrics.listInset > 0 ? metrics.listInset : SIDE_PADDING; }
+// The bottom margin stays SIDE_PADDING: the list above it is sized to the
+// space left, and 8px more of margin cut its last row's descenders.
+int readoutBottomMargin(const ThemeMetrics& metrics) {
+  return metrics.buttonHintsHeight > 0 ? metrics.buttonHintsHeight : SIDE_PADDING;
+}
 constexpr unsigned long LONG_PRESS_MS = 1000;
 
 constexpr int RECENT_TAB = 0;
@@ -965,7 +975,8 @@ void LibraryListActivity::buildScreen(UiScreen& screen) {
   const int16_t readoutReserved = static_cast<int16_t>(renderer.getLineHeight(SMALL_FONT_ID) + metrics.verticalSpacing);
   buildHeader(screen);
   screen.setContentMarginFromScreen(fui::Insets{static_cast<int16_t>(metrics.topPadding + metrics.headerHeight), 0,
-                                                static_cast<int16_t>(metrics.buttonHintsHeight + readoutReserved), 0});
+                                                static_cast<int16_t>(readoutBottomMargin(metrics) + readoutReserved),
+                                                0});
 
   if (!degraded) buildTabBar(screen);
   if (bookRowCount() == 0) {
@@ -996,8 +1007,8 @@ void LibraryListActivity::drawPositionReadout() const {
   snprintf(buf, sizeof(buf), positionFormat, selectedEntry() + 1, count);
   const auto& metrics = UITheme::getInstance().getMetrics();
   const int width = renderer.getTextWidth(SMALL_FONT_ID, buf);
-  const int x = renderer.getScreenWidth() - width - SIDE_PADDING;
-  const int y = renderer.getScreenHeight() - metrics.buttonHintsHeight - renderer.getLineHeight(SMALL_FONT_ID);
+  const int x = renderer.getScreenWidth() - width - readoutEdgeMargin(metrics);
+  const int y = renderer.getScreenHeight() - readoutBottomMargin(metrics) - renderer.getLineHeight(SMALL_FONT_ID);
   renderer.drawText(SMALL_FONT_ID, x, y, buf, true);
 }
 

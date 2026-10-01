@@ -410,10 +410,28 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
   // Battery + clock chrome and their title reserves live in the FreeInkUI
   // header component; this only fills the values from settings and metrics.
   applyHeaderStatus(renderer, props);
+  // Outlives the fui::header() call below that reads props.title.
+  std::string fittedTitle;
   if (rect.height < UITheme::getInstance().getMetrics().headerHeight) {
     // Short bands (home) are not split into strip + content row: the title
     // centers on the band, clear of the band's bottom edge.
     props.titleOffsetY = 0;
+    // fork-local seam: centred on the band, the title shares its row with the
+    // battery, and the header only reserved the battery's own width: RoundedRaff
+    // ran a book title to 9px of "100%". It stops a full side padding short.
+    if (title != nullptr) {
+      const auto& status = props.status;
+      int batteryWidth = status.battery.glyphWidth + status.edgeInset;
+      if (status.battery.label != nullptr) {
+        batteryWidth += renderer.getTextWidth(SMALL_FONT_ID, status.battery.label) + status.battery.gap;
+      }
+      const int headerPadding = UITheme::getInstance().getMetrics().headerSidePadding;
+      const int available = rect.width - headerPadding - batteryWidth - headerPadding;
+      if (available > 0 && renderer.getTextWidth(spec.titleFontId, title, EpdFontFamily::BOLD) > available) {
+        fittedTitle = renderer.truncatedText(spec.titleFontId, title, available, EpdFontFamily::BOLD);
+        props.title = fittedTitle.c_str();
+      }
+    }
   }
   // Tappable back button leading the band on touch boards, so every pushed
   // screen offers a visible way out beside the edge-swipe gesture. This frame
@@ -433,6 +451,17 @@ void BaseTheme::drawHeader(const GfxRenderer& renderer, Rect rect, const char* t
   props.borderEdges = fui::EdgeBottom;
   props.titleText = tokens.titleText;
   props.titleText.align = tokens.headerTitleAlign;
+  // fork-local seam: a centred title shares its line with the right-hand label
+  // (Wi-Fi's "2 networks found"), and centred it is truncated to make room
+  // ("Wi-Fi Netw..."). When the two would meet, the title moves to the start
+  // of the band, where it fits; Lyra and RoundedRaff place it there anyway.
+  if (title != nullptr && subtitle != nullptr && props.titleText.align == fui::TextAlign::Center) {
+    const int titleWidth = renderer.getTextWidth(spec.titleFontId, title, EpdFontFamily::BOLD);
+    const int labelWidth = renderer.getTextWidth(SMALL_FONT_ID, subtitle);
+    const int centreRight = band.x + band.width / 2 + titleWidth / 2;
+    const int labelLeft = band.x + band.width - tokens.headerSidePadding - labelWidth;
+    if (centreRight + tokens.headerSidePadding > labelLeft) props.titleText.align = fui::TextAlign::Left;
+  }
   props.subtitleText = tokens.smallText;
   props.styles = tokens.popup;
   props.sidePadding = tokens.headerSidePadding;
@@ -519,6 +548,12 @@ void BaseTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
   bookX = rect.x + (rect.width - bookWidth) / 2;
   const int bookY = rect.y;
   const int bookHeight = baseHeight;
+  // fork-local seam: the cover art stops above the "Continue Reading" band
+  // instead of running under it. Laid over the art, the band cut through
+  // whatever the cover printed there (a Gutenberg caption's letter tops showed
+  // above it); the art is cropped 1:1 by that much at its foot instead.
+  constexpr int continuePadding = 6;
+  const int continueBandHeight = hasContinueReading ? renderer.getLineHeight(UI_10_FONT_ID) + continuePadding : 0;
 
   // Bookmark dimensions (used in multiple places)
   const int bookmarkWidth = bookWidth / 8;
@@ -544,7 +579,7 @@ void BaseTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
 
           // The card matches the cover aspect except when width-capped; fill
           // the card 1:1 and crop the overflow rather than rescale the dither.
-          drawCoverThumbFill(renderer, bitmap, Rect{bookX, bookY, bookWidth, bookHeight});
+          drawCoverThumbFill(renderer, bitmap, Rect{bookX, bookY, bookWidth, bookHeight - continueBandHeight});
 
           // Draw border around the card
           renderer.drawRect(bookX, bookY, bookWidth, bookHeight);
@@ -675,15 +710,18 @@ void BaseTheme::drawRecentBookCover(GfxRenderer& renderer, Rect rect, const std:
     if (coverRendered) {
       // Draw box behind "Continue Reading" text (inverted when selected: black box instead of white)
       const char* continueText = tr(STR_CONTINUE_READING);
-      const int continueTextWidth = renderer.getTextWidth(UI_10_FONT_ID, continueText);
-      constexpr int continuePadding = 6;
-      const int continueBoxWidth = continueTextWidth + continuePadding * 2;
-      const int continueBoxHeight = renderer.getLineHeight(UI_10_FONT_ID) + continuePadding;
-      const int continueBoxX = rect.x + (rect.width - continueBoxWidth) / 2;
-      const int continueBoxY = continueY - continuePadding / 2;
+      // fork-local seam: a band across the whole cover rather than a box the
+      // width of the words. Sized to the text, the cover's own printing showed
+      // either side of it (a Gutenberg imprint read as "...Reading iberg").
+      const int continueBoxWidth = bookWidth;
+      const int continueBoxHeight = continueBandHeight;
+      const int continueBoxX = bookX;
+      // On the cover's bottom edge: floated above it, a strip of art showed
+      // underneath and the band cut the cover's frame in two.
+      const int continueBoxY = bookY + bookHeight - continueBoxHeight;
       renderer.fillRect(continueBoxX, continueBoxY, continueBoxWidth, continueBoxHeight, bookSelected);
       renderer.drawRect(continueBoxX, continueBoxY, continueBoxWidth, continueBoxHeight, !bookSelected);
-      renderer.drawCenteredText(UI_10_FONT_ID, continueY, continueText, !bookSelected);
+      renderer.drawCenteredText(UI_10_FONT_ID, continueBoxY + continuePadding / 2, continueText, !bookSelected);
     } else {
       renderer.drawCenteredText(UI_10_FONT_ID, continueY, tr(STR_CONTINUE_READING), !bookSelected);
     }
@@ -700,22 +738,23 @@ int BaseTheme::getMenuRowHeight(const GfxRenderer&) const { return UITheme::getI
 
 void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                                const std::function<std::string(int index)>& buttonLabel,
-                               const std::function<UIIcon(int index)>& rowIcon, const int rowSpacing) const {
-  // -1 means "use this theme's own spacing"; HomeActivity passes a tighter
-  // value when seven rows would otherwise not fit.
+                               const std::function<UIIcon(int index)>& rowIcon, const int rowSpacing,
+                               const int rowHeight) const {
+  // -1 means "use this theme's own"; HomeActivity passes tighter values when
+  // its rows would otherwise run off the panel (fork-local seam).
   const int spacing = rowSpacing >= 0 ? rowSpacing : BaseMetrics::values.menuSpacing;
+  const int height = rowHeight > 0 ? rowHeight : BaseMetrics::values.menuRowHeight;
   for (int i = 0; i < buttonCount; ++i) {
-    const int tileY = BaseMetrics::values.verticalSpacing + rect.y +
-                      static_cast<int>(i) * (BaseMetrics::values.menuRowHeight + spacing);
+    const int tileY = BaseMetrics::values.verticalSpacing + rect.y + static_cast<int>(i) * (height + spacing);
 
     const bool selected = selectedIndex == i;
 
     if (selected) {
       renderer.fillRect(rect.x + BaseMetrics::values.contentSidePadding, tileY,
-                        rect.width - BaseMetrics::values.contentSidePadding * 2, BaseMetrics::values.menuRowHeight);
+                        rect.width - BaseMetrics::values.contentSidePadding * 2, height);
     } else {
       renderer.drawRect(rect.x + BaseMetrics::values.contentSidePadding, tileY,
-                        rect.width - BaseMetrics::values.contentSidePadding * 2, BaseMetrics::values.menuRowHeight);
+                        rect.width - BaseMetrics::values.contentSidePadding * 2, height);
     }
 
     std::string labelStr = buttonLabel(i);
@@ -723,8 +762,7 @@ void BaseTheme::drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount
     const int textWidth = renderer.getTextWidth(UI_10_FONT_ID, label);
     const int textX = rect.x + (rect.width - textWidth) / 2;
     const int lineHeight = renderer.getLineHeight(UI_10_FONT_ID);
-    const int textY =
-        tileY + (BaseMetrics::values.menuRowHeight - lineHeight) / 2;  // vertically centered assuming y is top of text
+    const int textY = tileY + (height - lineHeight) / 2;  // vertically centered assuming y is top of text
     // Invert text when the tile is selected, to contrast with the filled background
     renderer.drawText(UI_10_FONT_ID, textX, textY, label, selectedIndex != i);
   }

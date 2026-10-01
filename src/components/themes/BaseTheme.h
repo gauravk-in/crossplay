@@ -173,7 +173,9 @@ constexpr ThemeMetrics values = {.batteryWidth = 15,
                                  .listWithSubtitleRowHeight = 50,
                                  .listRowGap = 0,
                                  .listRowRadius = 0,
-                                 .listInset = 0,
+                                 // fork-local: 12, not 0. Full-bleed, the inverted bar ran to
+                                 // 3px of the left edge and 9px of the right (the scroll track).
+                                 .listInset = 12,
                                  .listSidePadding = 20,
                                  .listSelectionStyle = 0,  // invert fill
                                  .listScrollWidth = 4,
@@ -284,7 +286,8 @@ class BaseTheme {
                                    bool& bufferRestored, std::function<bool()> storeCoverBuffer) const;
   virtual void drawButtonMenu(GfxRenderer& renderer, Rect rect, int buttonCount, int selectedIndex,
                               const std::function<std::string(int index)>& buttonLabel,
-                              const std::function<UIIcon(int index)>& rowIcon, int rowSpacing = -1) const;
+                              const std::function<UIIcon(int index)>& rowIcon, int rowSpacing = -1,
+                              int rowHeight = -1) const;
   virtual Rect drawPopup(const GfxRenderer& renderer, const char* message) const;
   virtual void fillPopupProgress(const GfxRenderer& renderer, const Rect& layout, const int progress) const;
   static void drawStatusBar(GfxRenderer& renderer, const float bookProgress, const int currentPage, const int pageCount,
