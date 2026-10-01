@@ -27,7 +27,7 @@ Welcome to the **CrossPlay** firmware, a fork of CrossPoint for the Xteink X4 Pr
       - [3.6.2 Reader](#362-reader)
       - [3.6.3 Controls](#363-controls)
       - [3.6.4 System](#364-system)
-      - [3.6.5 Get Books (OPDS Catalogs)](#365-get-books-opds-catalogs)
+      - [3.6.5 OPDS Servers (Multiple Libraries)](#365-opds-servers-multiple-libraries)
       - [3.6.6 Web Settings (Wi-Fi + OPDS)](#366-web-settings-wi-fi--opds)
       - [3.6.7 KOReader Sync Quick Setup](#367-koreader-sync-quick-setup)
         - [Option A: CrossPoint Sync Server (`sync.crosspointreader.com`, default)](#option-a-crosspoint-sync-server-synccrosspointreadercom-default)
@@ -291,17 +291,15 @@ The Settings screen allows you to configure the device's behavior. There are a f
   - "OFF" (default) - Disable the fix
   - "ON" - Enable the fix
 
-> [!NOTE]
-> A battery charging indicator is shown on the battery icon whenever the device is actively charging.
-
 #### 3.6.2 Reader
 
 - **Reader Font Family**: Choose the font used for reading:
   
   - "Noto Serif" (default) - Google's serif font
   - "Noto Sans" - Google's sans-serif font
+  - Installed SD card families
 
-- **Reader Font Size**: Adjust the text size for reading; options are "Small", "Medium" (default), "Large", or "X Large".
+- **Reader Font Size**: Choose a point size. Built-in and direct TTF/OTF/TTC fonts offer 12, 14, 16, and 18 pt. A `.cpfont` family offers the sizes installed for that family.
 
 - **Reader Line Spacing**: Adjust the spacing between lines; options are "Tight", "Normal" (default), or "Wide".
 
@@ -311,7 +309,7 @@ The Settings screen allows you to configure the device's behavior. There are a f
 
 - **Embedded Style**: Whether to use the EPUB file's embedded HTML and CSS stylisation and formatting; options are "ON" or "OFF".
 
-- **Hyphenation**: Whether to hyphenate text in Reading Mode; options are "ON" or "OFF".
+- **Hyphenation**: Whether to hyphenate text in Reading Mode; options are "ON" or "OFF". Korean text wraps only at spaces when "OFF"; when "ON", a Korean word may also wrap at the end of a line between syllables or where it meets digits, Latin letters, or brackets (no hyphen is drawn).
 
 - **Reading Orientation**: Set the screen orientation for reading EPUB files:
   
@@ -366,7 +364,7 @@ The Settings screen allows you to configure the device's behavior. There are a f
 
 - **KOReader Sync**: Options for setting up KOReader for syncing book progress. **Smart sync** is the default for new configurations and auto-resolves simple push/pull decisions. Existing credential files retain **Ask every time** when migrated; you can switch Sync Behavior at any time if you prefer manual confirmation.
 
-- **OPDS Servers**: Manage the [OPDS](https://en.wikipedia.org/wiki/Open_Publication_Distribution_System) catalogs that **Get Books** searches. See [Get Books (OPDS Catalogs)](#365-get-books-opds-catalogs) below.
+- **OPDS Servers**: Manage the [OPDS](https://en.wikipedia.org/wiki/Open_Publication_Distribution_System) catalogs the **OPDS Browser** row on the Home screen opens. See [OPDS Servers](#365-opds-servers-multiple-libraries) below.
 
 - **Clear Reading Cache**: Clear the internal SD card cache.
 
@@ -380,96 +378,28 @@ The Settings screen allows you to configure the device's behavior. There are a f
 
 - **Manage Fonts**: Browse, download, and manage custom font families installed from the SD card. See [Custom Fonts (SD Card)](#38-custom-fonts-sd-card) for more information.
 
-#### 3.6.5 Get Books (OPDS Catalogs)
+#### 3.6.5 OPDS Servers (Multiple Libraries)
 
-**Get Books** lives in **Apps** on the Home screen, and downloads books
-straight to the device from an OPDS catalog. Two catalogs are set up on first run, so it works
-without any configuration:
+CrossPlay supports saving multiple OPDS servers and switching between them when browsing catalogs.
 
-- **Get Books** -- searches a large library and converts what you pick into a
-  file tuned for this screen before it reaches the device. Search only: it has
-  far too much to browse, so it opens straight on the keyboard. It is a shared
-  service run for CrossPlay users, and the username and password it comes
-  configured with are the same for every device: they ship inside the firmware,
-  so treat them as public rather than as an account of your own. Point the
-  entry at your own server under **Settings -> System -> OPDS Servers** if you
-  would rather not share one.
-- **Project Gutenberg** -- a very large public-domain library, browsable by
-  category as well as searchable.
+1. Open **Settings -> System -> OPDS Servers**.
 
-Standard Ebooks is not set up for you, and is removed from devices that had it:
-their feed now requires a Patrons Circle account, so it failed for everyone who
-had not donated. If you have an account, add it under **Settings -> System ->
-OPDS Servers** with your patron email as the username and the password left
-empty. If you had already put your email into that entry, it is kept.
-
-Get Books opens on whichever source is selected, and the source decides what
-you see. A browsable catalog opens on its own categories (Recent, Popular, by
-subject) with a search button in the header. A lookup-only catalog has nothing
-to browse, so it opens straight on the keyboard.
-
-Type a title or author, pick a result to see its details -- cover, author,
-format, size and description -- then choose **Download**. **Back** walks you
-from the results to the search box, and from there back out.
-
-The library icon in the top corner opens **Sources & Languages**, on the
-browsing screen and on the search keyboard alike.
-
-If you delete one of the seeded catalogs it stays deleted; they are only added
-once.
-
-##### Adding your own catalog
-
-1. Go to **Settings -> System -> OPDS Servers**.
-
-2. Select **Add Server** to create an entry, or an existing one to edit it.
+2. Select **Add Server** to create a new entry, or select an existing server to edit it.
 
 3. Configure these fields:
-
-   - **Server Name**: Optional display name (for example, "Home Calibre").
-
-   - **OPDS Server URL**: Full catalog root URL (for Calibre Content Server,
-     usually ends with `/opds`).
-
+   
+   - **Server Name**: Optional display name (for example, "Home Calibre" or "Public Catalog").
+   
+   - **OPDS Server URL**: Full catalog root URL (for Calibre Content Server, usually ends with `/opds`).
+   
    - **Username / Password**: Optional credentials for authenticated servers.
 
-4. Use **Delete Server** inside an entry to remove it.
-
-##### Sources & Languages
-
-The library icon in the header opens one screen for both settings.
-
-**Source** picks the single catalog Get Books uses. The choice is permanent:
-Get Books opens on that source until you change it here.
-
-**Languages** restricts results. English only is the default. Books the catalog
-does not tag with a language are always shown, as are books in languages the
-list does not cover -- a filter that hid untagged books would hide most of a
-catalog.
-
-##### Provisioning a catalog from the SD card
-
-Rather than typing a URL and password on the on-screen keyboard, you can drop a
-file named `opds-seed.json` at the root of the SD card:
-
-```json
-{"servers": [
-  {"name": "My Library", "url": "https://example.com/opds",
-   "username": "me", "password": "secret"}
-]}
-```
-
-The catalogs are imported on the next boot and **the file is then deleted**,
-because it holds the password in plain text and the card is removable.
+4. Use **Delete Server** inside a server entry to remove it.
 
 Behavior notes:
 
 - You can store up to 8 OPDS servers.
-- Authentication is HTTP Basic. With Calibre Content Server, set authentication
-  to Basic rather than Digest.
-- Downloaded filenames come from the entry's title and author. If a catalog
-  packs extra detail into those fields, set **Filename format** to *Title only*
-  to keep it out of the filename on the card.
+- OPDS authentication supports HTTP Basic auth. If you use Calibre Content Server with authentication enabled, set it to Basic (not Digest).
 
 You can also manage OPDS servers from the web interface while in File Transfer mode:
 
@@ -680,13 +610,13 @@ Transparent overlay files are intentionally separate from normal sleep images. R
 
 ### 3.8 Custom Fonts (SD Card)
 
-CrossPlay supports loading additional fonts from the SD card, extending beyond the two built-in families (Noto Serif, Noto Sans). Custom fonts can include extended Unicode coverage, enabling CJK (Chinese, Japanese, Korean) and other scripts.
+CrossPlay loads additional fonts from the SD card. Custom fonts can add Chinese, Japanese, Korean, and other scripts that the built-in reader fonts lack. If your device have external RAM, you can copy `.ttf`, `.otf`, and `.ttc` files directly. Otherwise, use `.cpfont` files made from those fonts. 
 
 There are three ways to install fonts:
 
 1. **Download from device (recommended):** Go to **Settings -> System -> Manage Fonts**, browse the available font families, and select one to download over Wi-Fi.
-2. **Upload via web interface:** While in **File Transfer** mode, open the web UI in a browser and navigate to the **Fonts** tab to upload `.cpfont` files.
-3. **Manual SD card copy:** Download font files from the [crosspoint-fonts repository](https://github.com/crosspoint-reader/crosspoint-fonts) and copy them to `/.fonts/` (preferred) or `/fonts/` on your SD card.
+2. **Upload via web interface:** While in **File Transfer** mode, open the web UI and use the **Fonts** tab to upload `.cpfont` files. The Fonts tab does not accept TTF/OTF/TTC files.
+3. **Manual SD card copy:** Copy `.cpfont` families from the [crosspoint-fonts repository](https://github.com/crosspoint-reader/crosspoint-fonts) to `/.fonts/` or `/fonts/`. If your device have external RAM, you can also copy TTF/OTF/TTC files there without conversion.
 
 Once installed, custom fonts appear in **Settings → Reader → Font Family** alongside the built-in fonts.
 
@@ -728,7 +658,7 @@ On the **Xteink X3**, the gyroscope can be used to turn pages by tilting the dev
 
 When reading an EPUB that contains footnotes, you can navigate to the footnote text by selecting the footnote reference in the book. From the footnote, you can return to your original reading position.
 
-If the device goes to sleep or you close the book while viewing a footnote, the book reopens to your original reading position, not the footnote.
+If the device goes to sleep or you close the book after following a link, the book reopens on the page you were viewing, and Back still returns you to where you tapped the link.
 
 ### Dictionary Lookup
 

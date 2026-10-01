@@ -26,7 +26,7 @@ devices with an 800x480 panel, capacitive touch and two physical buttons
 (three on the Sticky; the design uses the two shared buttons), and
 [CrossPoint](https://crosspointreader.com/) already makes them good at reading.
 CrossPlay is firmware that keeps all of that and adds the other things a screen
-that holds still is good at: **25 games and 9 apps**,
+that holds still is good at: **25 games and 8 apps**,
 spaced-repetition flashcards, comics, a read-later queue, and two devices that
 play together with nothing to set up.
 
@@ -83,7 +83,6 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Study**       | Anki decks with the FSRS scheduler, offline.                             |
 | **Hacker News** | The front page in a reading serif, articles kept on the card.            |
 | **xkcd**        | The archive, packed for the card and drawn one to one.                   |
-| **Get Books**   | Browse any OPDS catalog and download straight to the card, no computer.  |
 | **Instapaper**  | Your read-later queue, synced both ways: reading position and archiving. |
 | **Wallpapers**  | Pick an image on the card as the sleep screen, one tap to set it.        |
 | **Wikipedia**   | Fifty thousand articles on the card, read like a book, no internet.      |
@@ -168,7 +167,7 @@ Most of the shelf never touches the network. Of the parts that do:
   upstream's infrastructure rather than this fork's, inherited so that flashing
   CrossPlay over CrossPoint does not orphan an existing sync. The address is a
   setting and can be pointed at any KOSync server.
-- **Connections, Wordle, xkcd, Hacker News, Trivia, Get Books and Instapaper**
+- **Connections, Wordle, xkcd, Hacker News, Trivia and Instapaper**
   fetch what you ask them for, when you ask. Connections downloads the
   published puzzle archive in one go when you press the button for it, from a
   GitHub mirror rather than from the New York Times, and CrossPlay ships none

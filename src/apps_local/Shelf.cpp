@@ -12,7 +12,6 @@
 #include "ShelfFolderActivity.h"
 #include "ShelfHidden.h"
 #include "ShelfState.h"
-#include "activities/browser/OpdsBookBrowserActivity.h"
 #include "battleship/BattleshipActivity.h"
 #include "calculator/CalculatorActivity.h"
 #include "checkers/CheckersActivity.h"
@@ -85,7 +84,6 @@ constexpr shelf::Item kApps[] = {
     {"STUDY", &icon_study_32, &StudyActivity::create},
     {"HACKER NEWS", &icon_hackernews_32, &HackerNewsActivity::create},
     {"XKCD", &icon_xkcd_32, &XkcdActivity::create},
-    {"GET BOOKS", &icon_getbooks_32, &OpdsBookBrowserActivity::create},
     {"INSTAPAPER", &icon_instapaper_32, &InstapaperActivity::create},
     {"WALLPAPERS", &icon_wallpapers_32, &WallpapersActivity::create},
     {"WIKIPEDIA", &icon_wikipedia_32, &WikipediaActivity::create},

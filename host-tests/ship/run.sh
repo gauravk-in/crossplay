@@ -577,6 +577,20 @@ else
 fi
 
 checks=$((checks + 1))
+# AN UPSTREAM SYNC IS MERGED, NOT SQUASHED. A squash drops the merge commit's
+# second parent (crosspoint/develop), so the merge base never advances and the
+# next sync re-merges every upstream commit it already carried. ship.sh must
+# both detect a branch that merges history trunk lacks and land it through
+# 'gh pr merge --merge'. Matched as invocations, for the reason given above.
+if printf '%s' "$CODE" | grep -qE 'run "gh pr merge [^"]*--merge ' &&
+   printf '%s' "$CODE" | grep -qE 'merge-base --is-ancestor "\$p" "\$TRUNK" \|\| METHOD=merge'; then
+  ok
+else
+  failed=$((failed + 1))
+  echo "FAIL ship  ship.sh no longer lands an upstream sync with a merge commit. A squash drops crosspoint/develop as a parent: the merge base stops advancing and the next sync re-merges, and re-conflicts on, everything this one carried."
+fi
+
+checks=$((checks + 1))
 # The COMPARISON, not the variables: both names appear in the die message
 # that reports a mismatch, so grepping for them passed with the comparison
 # deleted. It is a diff of everything but the site's emulator files now (check

@@ -24,12 +24,23 @@ mkdir -p "$BUILD_DIR"
 # of the bug is allowed to name it (a detector satisfied by a mention of the
 # thing is no detector).
 SRC=../../src/activities/reader/ReaderToolbarUi.cpp
-if sed 's://.*::' "$SRC" | grep -q "tokens\.listRowGap"; then
+# Since the 2026-09-30 sync upstream hands the list its gap explicitly
+# (listProps_.rowGap = rowGap), so the sheet and the list agree by construction
+# whatever rowGap is computed from. That is the invariant card #546 needs, and
+# it is what passes here: the list is told `rowGap` and panelGeometry() sizes
+# the sheet from that same `rowGap`. Without both, the old rule applies and the
+# raw token may not appear at all.
+FLAT=$(sed 's://.*::' "$SRC" | tr '\n' ' ')
+if printf '%s' "$FLAT" | grep -q "listProps_\.rowGap = rowGap;" &&
+   printf '%s' "$FLAT" | grep -qE "panelGeometry\( *[^;]*, *rowH, *rowGap,"; then
+  echo "source guard: the list draws the gap the sheet is sized with  ok"
+elif sed 's://.*::' "$SRC" | grep -q "tokens\.listRowGap"; then
   echo "FAIL: ReaderToolbarUi.cpp uses tokens.listRowGap (the RAW theme token)."
   echo "      The list resolves its gap through Screen::resolveListProps(), which"
   echo "      raises it to listTouchRowGap on touch boards. Size the sheet and sync"
   echo "      the nav with the resolved gap. Card #546."
   sed 's://.*::' "$SRC" | grep -n "tokens\.listRowGap"
   exit 1
+else
+  echo "source guard: reader panel does not use the raw listRowGap  ok"
 fi
-echo "source guard: reader panel does not use the raw listRowGap  ok"

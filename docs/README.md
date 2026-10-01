@@ -5,8 +5,10 @@ Two owners share this directory, and the split is deliberate.
 **Upstream's reference docs keep upstream's filenames**, so merges from
 CrossPoint stay cheap: `activity-manager.md`, `comparison.md`, `dictionary.md`,
 `file-formats.md`, `fix-bricked-xteink.md`, `focus-reading.md`,
-`hyphenation-trie-format.md`, `i18n.md`, `sd-card-fonts.md`, `translators.md`,
-`troubleshooting.md`, `webserver*.md`, `contributing/` and `images/`.
+`hyphenation-trie-format.md`, `i18n.md`, `plugin-events.md`, `sd-card-fonts.md`,
+`sd-plugins.md`, `translators.md`, `troubleshooting.md`, `webserver*.md`,
+`contributing/` and `images/`. The two plugin docs arrived with upstream's SD
+plugin system in the 2026-09-30 sync.
 
 `crosspoint-readme.md` is the exception to the naming rule: it is upstream's
 README, moved here when the fork took the `README.md` filename, and its

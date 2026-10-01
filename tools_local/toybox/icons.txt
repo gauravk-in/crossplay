@@ -306,10 +306,6 @@ go_trash     = trash-2      # the square button on the RESUME row. It throws the
 # for a game (see the sudoku note above).
 picross     = image
 
-# Get Books lives in APPS. library-big rather than book: the row's job is to
-# say "a place with many books", not "a book" -- every other row here is one
-# thing, and this one is a catalog.
-getbooks    = library-big
 # ---------------------------------------------------------------------------
 # FOREHEAD, and its seventeen category marks.
 #
@@ -355,7 +351,7 @@ cat_tricky  = puzzle            # the one list with nothing you can point at
 # Instapaper, in APPS. `bookmark` -- a ribbon with a notch, and the only
 # downward pennant on the shelf. It has to separate from its NEIGHBOURS rather
 # than from the games: STUDY is letterforms, HACKER NEWS a folded broadsheet,
-# XKCD a stack of frames, GET BOOKS a shelf of spines. A ribbon shares an
+# XKCD a stack of frames. A ribbon shares an
 # outline with none of them, and "saved to come back to" is exactly what the
 # app holds.
 #
