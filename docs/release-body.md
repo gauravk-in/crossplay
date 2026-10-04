@@ -2,6 +2,6 @@
 
 ### What is new in 1.13.30
 
-- Stop web server before radio teardown (#285)
 - Create /study before saving the pairing
+- Stop web server before radio teardown
 

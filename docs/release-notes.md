@@ -23,8 +23,8 @@ Everything above the marker is written by hand.
 
 ### 1.13.30
 
-- Stop web server before radio teardown (#285)
 - Create /study before saving the pairing
+- Stop web server before radio teardown
 
 ### 1.13.29
 
