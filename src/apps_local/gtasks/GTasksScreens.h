@@ -128,7 +128,9 @@ void buildSignOutConfirm(toybox::Screen& screen, int pendingCount);
 
 // Why sign-in is needed (or why it stopped working) and the one button that
 // starts it. `reason` replaces the default sentence when Google said why.
-void buildSignIn(toybox::Screen& screen, const char* reason);
+// Calendar shares the sign-in, so it passes its own band title and opening
+// sentence.
+void buildSignIn(toybox::Screen& screen, const char* reason, const char* title = "TASKS", const char* intro = nullptr);
 
 // The phone's way in: a QR of the reader's own sign-in page, and the same
 // address in characters for typing. Returns the QR's rect for the encoder.
@@ -137,6 +139,7 @@ fui::Rect buildPhone(toybox::Screen& screen, const char* address);
 // --- Notices ---------------------------------------------------------------
 
 struct NoticeModel {
+  const char* title = "TASKS";  // the band
   const char* headline = "";
   const char* message = "";
   // nullptr draws no button: a busy notice has nothing to decide yet.

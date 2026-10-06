@@ -24,6 +24,7 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "activities/reader/ReaderUtils.h"
+#include "apps_local/gcal/GCalSleep.h"
 #include "apps_local/gtasks/GTasksSleep.h"
 #include "apps_local/notes/NotesSleep.h"
 #include "components/UITheme.h"
@@ -593,6 +594,13 @@ void SleepActivity::onEnter() {
     case (CrossPointSettings::SLEEP_SCREEN_MODE::TASKS):
       // CrossPlay: the list chosen in Tasks, from the card as last synced.
       if (gtasks::drawAsleep(renderer)) {
+        renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+        return;
+      }
+      return renderDefaultSleepScreen();
+    case (CrossPointSettings::SLEEP_SCREEN_MODE::CALENDAR):
+      // CrossPlay: today's schedule from Calendar, from the card as last synced.
+      if (gcal::drawAsleep(renderer)) {
         renderer.displayBuffer(HalDisplay::HALF_REFRESH);
         return;
       }

@@ -20,6 +20,7 @@
 #include "connections/ConnectionsActivity.h"
 #include "dungeon/DungeonActivity.h"
 #include "forehead/ForeheadActivity.h"
+#include "gcal/GCalActivity.h"
 #include "go/GoActivity.h"
 #include "gtasks/GTasksActivity.h"
 #include "hackernews/HackerNewsActivity.h"
@@ -93,6 +94,7 @@ constexpr shelf::Item kApps[] = {
     // the screens are being chosen; a Notes mark comes with the real app.
     {"NOTES", &icon_murdle_face_clues_32, &NotesActivity::create},
     {"TASKS", &icon_gtasks_32, &GTasksActivity::create},
+    {"CALENDAR", &icon_gcal_32, &GCalActivity::create},
 };
 
 // The two rows Home grows, in reading order. Titles are Title Case because

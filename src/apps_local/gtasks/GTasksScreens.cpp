@@ -399,8 +399,8 @@ void buildSignOutConfirm(toybox::Screen& screen, const int pendingCount) {
 
 // --- Not signed in ---------------------------------------------------------
 
-void buildSignIn(toybox::Screen& screen, const char* reason) {
-  chrome(screen, "TASKS");
+void buildSignIn(toybox::Screen& screen, const char* reason, const char* title, const char* intro) {
+  chrome(screen, title);
   const fui::DeviceContext& device = screen.device();
   const int16_t width = pageWidth(device);
   footerButton(screen, footerBand(device), "START SIGN-IN", ActionStartSignIn, false);
@@ -413,10 +413,12 @@ void buildSignIn(toybox::Screen& screen, const char* reason) {
   screen.target().fill(fui::makeRect(toybox::kMargin, y, width, toybox::kRule), fui::Paint::solid(fui::Color::Black));
   y = static_cast<int16_t>(y + toybox::kRule + toybox::kGutter * 2);
 
-  const char* text = reason != nullptr && reason[0] != '\0'
-                         ? reason
-                         : "Your Google Tasks list, on this reader. Start here, then sign in with Google on your "
-                           "phone, on the same Wi-Fi. You do this once.";
+  if (intro == nullptr) {
+    intro =
+        "Your Google Tasks list, on this reader. Start here, then sign in with Google on your phone, on the same "
+        "Wi-Fi. You do this once.";
+  }
+  const char* text = reason != nullptr && reason[0] != '\0' ? reason : intro;
   // A text area rather than a text run: it sits under the rule instead of
   // centring in the space, like the notice's message.
   fui::TextAreaProps message;
@@ -465,7 +467,7 @@ fui::Rect buildPhone(toybox::Screen& screen, const char* address) {
 // --- Notices ---------------------------------------------------------------
 
 void buildNotice(toybox::Screen& screen, const NoticeModel& model) {
-  chrome(screen, "TASKS");
+  chrome(screen, model.title);
   const fui::DeviceContext& device = screen.device();
   const int16_t width = pageWidth(device);
   if (model.actionLabel != nullptr) footerButton(screen, footerBand(device), model.actionLabel, ActionNotice, false);

@@ -14,11 +14,15 @@ Google key is kept in `auth.cfg` on the card and goes only to Google.
    address.
 2. Scan the QR with a phone on the same Wi-Fi. The page that opens is served
    by the reader. Tap **Sign in with Google**, sign in, and allow access to
-   Google Tasks.
+   Google Tasks and Calendar.
 3. Google then sends the phone to a `127.0.0.1` page that will not load. That
    is expected. Copy the whole address from the address bar, go back to the
    reader's page, paste it and tap **Send to the reader**.
 4. The page says who you signed in as, and the reader fetches your lists.
+
+The same sign-in serves [Calendar](gcal.md): signing in from either app
+signs in both, and signing out of either signs out both. A sign-in made before
+Calendar existed lacks its permission; Calendar says so and asks for a new one.
 
 Google's own device sign-in (a code typed at google.com/device) does not allow
 the Tasks permission, which is why the reader runs the installed-app sign-in
@@ -30,9 +34,10 @@ address only works with the sign-in the reader started, and only once.
 The reader signs in as a Google Cloud OAuth client that you make once:
 
 1. In the Google Cloud console, create a project and enable the
-   **Google Tasks API**.
+   **Google Tasks API** and the **Google Calendar API**.
 2. Under **Google Auth Platform**, set up the consent screen (External), and
-   add the scopes `openid`, `email` and `.../auth/tasks`.
+   add the scopes `openid`, `email`, `.../auth/tasks` and
+   `.../auth/calendar.readonly`.
 3. Create an OAuth client of type **Desktop app**.
 4. Put its ID and secret on the card in `/.crosspoint/gtasks/client.cfg`:
 
