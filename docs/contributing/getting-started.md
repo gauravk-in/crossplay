@@ -164,6 +164,9 @@ runner, so you do not have to build for a device to land. Note what that does
 [Landing and integration](./landing-and-integration.md) covers which gate a
 branch actually needs and what to do when integration goes red.
 
+Development builds apply the Git version only to sources that use
+`CROSSPOINT_VERSION`, so a branch/SHA change does not invalidate unrelated objects.
+
 ## What to read next
 
 - [LOCAL_SCOPE.md](../../LOCAL_SCOPE.md) -- what this fork owns and what it

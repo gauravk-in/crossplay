@@ -2,10 +2,13 @@
 
 #include <ArduinoJson.h>
 #include <BoardConfig.h>
+#include <BookKey.h>
 #include <Crypto.h>
+#include <DeviceSecret.h>
 #include <FsHelpers.h>
 #include <HalDisplay.h>
 #include <HalGPIO.h>
+#include <HalMemory.h>
 #include <HalStorage.h>
 #include <HalSystem.h>
 #include <I18n.h>
@@ -22,6 +25,7 @@
 #include <esp_efuse_table.h>
 #include <esp_ota_ops.h>
 #include <wolfssl/wolfcrypt/aes.h>
+#include <wolfssl/wolfcrypt/hash.h>
 
 #include <algorithm>
 #include <cctype>
@@ -37,6 +41,7 @@
 #include "FirmwareFlasher.h"
 #include "FontInstaller.h"
 #include "OpdsServerStore.h"
+#include "ProtectedPaths.h"
 #include "SdCardFontSystem.h"
 #include "SettingsList.h"
 #include "WebDAVHandler.h"
@@ -53,6 +58,7 @@
 #include "html/js/jszip_minJs.generated.h"
 #include "html/js/wallconvertJs.generated.h"
 #include "util/BookCacheUtils.h"
+#include "util/DictionaryRegistry.h"
 #include "util/PluginHttp.h"
 #include "util/PluginLocations.h"
 #include "util/TaskWatchdog.h"
@@ -269,6 +275,7 @@ void CrossPointWebServer::begin() {
     server->on("/api/relay", HTTP_POST, [this] { handleRelay(); });
     server->on("/api/crypto", HTTP_POST, [this] { handleCrypto(); });
     server->on("/api/fetch", HTTP_POST, [this] { handleFetch(); });
+    server->on("/api/book-key", HTTP_POST, [this] { handleBookKey(); });
     server->on("/api/plugin-fs", HTTP_POST, [this] { handlePluginFs(); }, [this] { handlePluginFsUpload(); });
 
     // Wi-Fi credential endpoints
@@ -611,8 +618,22 @@ void CrossPointWebServer::handleStatus() const {
   doc["rssi"] = apMode ? 0 : WiFi.RSSI();
   doc["freeHeap"] = ESP.getFreeHeap();
   doc["uptime"] = millis() / 1000;
-  char hardwareMac[18];
-  if (gpio.getFactoryMac(hardwareMac)) doc["hardwareMac"] = hardwareMac;
+  // ?plugin=<name> adds a stable device ID for that plugin: sha256(secret ||
+  // name). Not reversible to any hardware ID, and different per plugin.
+  String plugin = server->arg("plugin");
+  plugin.toLowerCase();  // FAT folder names ignore case
+  uint8_t secret[32];
+  if (!plugin.isEmpty() && plugin.length() <= 64 && deviceSecret(secret)) {
+    uint8_t input[32 + 64];
+    memcpy(input, secret, sizeof(secret));
+    memcpy(input + sizeof(secret), plugin.c_str(), plugin.length());
+    uint8_t hash[32];
+    if (wc_Sha256Hash(input, sizeof(secret) + plugin.length(), hash) == 0) {
+      char hex[65];
+      for (size_t i = 0; i < sizeof(hash); i++) snprintf(hex + 2 * i, 3, "%02x", hash[i]);
+      doc["deviceId"] = hex;
+    }
+  }
 #if FREEINK_DEVICE_X4 || FREEINK_DEVICE_X3
   doc["device"] = gpio.deviceIsX3() ? "X3" : "X4";
 #else
@@ -793,7 +814,7 @@ void CrossPointWebServer::handleDownload() const {
   }
 
   const String itemName = itemPath.substring(itemPath.lastIndexOf('/') + 1);
-  if (itemName.startsWith(".")) {
+  if (itemName.startsWith(".") || protectedpaths::isSensitivePath(itemPath.c_str())) {
     server->send(403, "text/plain", "Cannot access system files");
     return;
   }
@@ -921,6 +942,10 @@ void CrossPointWebServer::handleUpload(UploadState& state) const {
     String filePath = state.path;
     if (!filePath.endsWith("/")) filePath += "/";
     filePath += state.fileName;
+    if (protectedpaths::isSensitivePath(filePath.c_str())) {
+      state.error = "Cannot write protected items";
+      return;
+    }
 
     // Check if file already exists - SD operations can be slow
     resetTaskWatchdogIfSubscribed();
@@ -1155,6 +1180,11 @@ void CrossPointWebServer::handleRename() const {
     newPath += "/";
   }
   newPath += newName;
+  if (protectedpaths::isSensitivePath(itemPath.c_str()) || protectedpaths::isSensitivePath(newPath.c_str())) {
+    file.close();
+    server->send(403, "text/plain", "Cannot move protected item");
+    return;
+  }
 
   if (Storage.exists(newPath.c_str())) {
     file.close();
@@ -1243,6 +1273,11 @@ void CrossPointWebServer::handleMove() const {
     newPath += "/";
   }
   newPath += itemName;
+  if (protectedpaths::isSensitivePath(itemPath.c_str()) || protectedpaths::isSensitivePath(newPath.c_str())) {
+    file.close();
+    server->send(403, "text/plain", "Cannot move protected item");
+    return;
+  }
 
   if (newPath == itemPath) {
     file.close();
@@ -1322,8 +1357,8 @@ void CrossPointWebServer::handleDelete() const {
     // Security check: prevent deletion of protected items
     const String itemName = itemPath.substring(itemPath.lastIndexOf('/') + 1);
 
-    // Hidden/system files are protected
-    if (itemName.startsWith(".")) {
+    // Hidden/system files and credential stores are protected
+    if (itemName.startsWith(".") || protectedpaths::isSensitivePath(itemPath.c_str())) {
       failedItems += itemPath + " (hidden/system file); ";
       allSuccess = false;
       continue;
@@ -1394,7 +1429,9 @@ void CrossPointWebServer::handleGetSettings() const {
   // Pass the SD font registry so the fontFamily setting's enumStringValues
   // includes SD-resident families — otherwise the web API only exposes the
   // three built-in fonts.
-  const auto& settings = getSettingsList(&sdFontSystem.registry());
+  std::vector<DictionaryEntry> dictionaries;
+  DictionaryRegistry::discover(dictionaries);
+  const auto& settings = getSettingsList(&sdFontSystem.registry(), &dictionaries);
 
   server->setContentLength(CONTENT_LENGTH_UNKNOWN);
   server->send(200, "application/json", "");
@@ -1505,7 +1542,9 @@ void CrossPointWebServer::handlePostSettings() {
     return;
   }
 
-  const auto& settings = getSettingsList(&sdFontSystem.registry());
+  std::vector<DictionaryEntry> dictionaries;
+  DictionaryRegistry::discover(dictionaries);
+  const auto& settings = getSettingsList(&sdFontSystem.registry(), &dictionaries);
   int applied = 0;
 
   for (const auto& s : settings) {
@@ -1890,6 +1929,7 @@ void CrossPointWebServer::handlePluginList() const {
     if (!e.hasPluginJs) continue;
     JsonObject obj = arr.add<JsonObject>();
     obj["name"] = e.name;
+    obj["dir"] = e.dir;         // the plugin keeps its own files here
     obj["title"] = e.name;      // overridden by manifest below
     obj["mount"] = "settings";  // default mount point
     std::string manifest;
@@ -1992,10 +2032,7 @@ void CrossPointWebServer::handleRelay() {
   server->send(200, "application/octet-stream", respBody);
 }
 
-namespace {
-// A destination path is safe to write if it is absolute and has no parent refs.
-bool safeWritePath(const std::string& p) { return p.size() > 1 && p[0] == '/' && p.find("..") == std::string::npos; }
-}  // namespace
+namespace {}  // namespace
 
 // POST /api/crypto {op, ...base64 fields...} -> {data|public|private|key|cert, ...}
 // Generic wolfSSL primitives (hash, random, AES, RSA, PKCS#12) a plugin can use.
@@ -2103,6 +2140,25 @@ void CrossPointWebServer::handleCrypto() {
       else
         resp["error"] = "aesdec failed";
     }
+  } else if (op == "sha256") {
+    const Bytes d = dec("data");
+    if (decodeOom) return sendOom("input");
+    uint8_t h[32];
+    c.sha256(d.ptr(), d.size, h);
+    setEncoded("data", h, 32);
+  } else if (op == "rsadec") {
+    // Raw private-key operation with a caller-supplied PKCS#8 key; the caller
+    // removes the padding.
+    const Bytes priv = dec("private"), d = dec("data");
+    if (decodeOom) return sendOom("input");
+    static constexpr size_t MAX_MODULUS = 512;
+    auto out = makeUniqueNoThrow<uint8_t[]>(MAX_MODULUS);
+    if (!out) return sendOom("RSA output");
+    const int32_t n = c.rsaPrivateRaw(priv.ptr(), priv.size, d.ptr(), d.size, out.get(), MAX_MODULUS);
+    if (n > 0)
+      setEncoded("data", out.get(), static_cast<size_t>(n));
+    else
+      resp["error"] = "rsadec failed";
   } else if (op == "keygen") {
     RsaKeyPairDer kp;
     if (c.rsaGenerate(&kp)) {
@@ -2173,7 +2229,7 @@ void CrossPointWebServer::handleFetch() {
   size_t segmentLimit = req["maxBytes"] | 0;
   static constexpr size_t FETCH_MAX_SEGMENT_SIZE = 4 * 1024 * 1024;
   if (segmentLimit > FETCH_MAX_SEGMENT_SIZE) segmentLimit = FETCH_MAX_SEGMENT_SIZE;
-  if (url.empty() || !safeWritePath(dest)) {
+  if (url.empty() || !protectedpaths::isPluginPath(dest)) {
     server->send(400, "application/json", "{\"error\":\"bad url/dest\"}");
     return;
   }
@@ -2393,7 +2449,7 @@ void CrossPointWebServer::handlePluginFsUpload() {
       st.errorStatus = 0;
       st.error = nullptr;
       const String plugin = server->arg("plugin");
-      if (!safeComponent(plugin) || !safeWritePath(st.path)) {
+      if (!safeComponent(plugin) || !protectedpaths::isPluginPath(st.path)) {
         LOG_ERR("WEB", "Rejected plugin file write: plugin='%s' path='%s'", plugin.c_str(), st.path.c_str());
         fail(400, "bad path");
         return;
@@ -2453,6 +2509,28 @@ void CrossPointWebServer::handlePluginFs() {
     sendJson(resp);
   }
   st.started = false;
+}
+
+// POST /api/book-key {path, key (base64, 16 bytes), expires?} -> {ok}
+// Stores a protected book's content key, wrapped to this device, as
+// "<path>.key" for the reader to open the book with.
+void CrossPointWebServer::handleBookKey() {
+  JsonDocument req;
+  if (!readJsonBody(req)) return;
+  const std::string path = req["path"] | "";
+  const char* keyB64 = req["key"] | "";
+  const int64_t expires = req["expires"] | static_cast<int64_t>(0);
+  uint8_t key[bookkey::KEY_LEN];
+  const int32_t n = freeink::content::base64Decode(keyB64, strlen(keyB64), key, sizeof(key));
+  if (!protectedpaths::isPluginPath(path) || n != static_cast<int32_t>(sizeof(key)) || expires < 0) {
+    server->send(400, "application/json", "{\"error\":\"bad path/key\"}");
+    return;
+  }
+  if (!bookkey::write(path, key, expires)) {
+    server->send(500, "application/json", "{\"error\":\"cannot store key\"}");
+    return;
+  }
+  server->send(200, "application/json", "{\"ok\":true}");
 }
 
 void CrossPointWebServer::handlePluginRunnerPage() const {
@@ -2658,6 +2736,10 @@ void CrossPointWebServer::onWebSocketEvent(uint8_t num, WStype_t type, uint8_t* 
           String filePath = wsUploadPath;
           if (!filePath.endsWith("/")) filePath += "/";
           filePath += wsUploadFileName;
+          if (protectedpaths::isSensitivePath(filePath.c_str())) {
+            wsServer->sendTXT(num, "ERROR:Cannot write protected items");
+            return;
+          }
 
           resetTaskWatchdogIfSubscribed();
           if (Storage.exists(filePath.c_str())) {
@@ -2786,6 +2868,9 @@ void CrossPointWebServer::handleFontList() const {
   JsonDocument doc;
   JsonArray arr = doc["families"].to<JsonArray>();
   doc["maxFamilies"] = SdCardFontRegistry::MAX_SD_FAMILIES;
+  // Vector (.ttf/.otf) fonts need PSRAM to stay resident; DRAM-only boards
+  // only take pre-rendered .cpfont uploads.
+  doc["vectorFonts"] = HalMemory::getPsramHeap().totalBytes > 0;
 
   for (const auto& family : families) {
     JsonObject fObj = arr.add<JsonObject>();
@@ -2829,6 +2914,7 @@ void CrossPointWebServer::handleFontUploadData() {
       fontUpload.filePath.clear();
       fontUpload.valid = false;
       fontUpload.magicChecked = false;
+      fontUpload.isVector = false;
       fontUpload.bytesWritten = 0;
       fontUpload.bufferPos = 0;
       fontUpload.buffer.reset();
@@ -2841,10 +2927,14 @@ void CrossPointWebServer::handleFontUploadData() {
       String filename = upload.filename;
       filename.replace(' ', '_');
       // Validate filename: rejects path traversal (../, /, \) and enforces
-      // a .cpfont basename of alphanumeric + hyphen + underscore. Without
-      // this an attacker could supply "../../.crosspoint/settings.json" as
-      // a "filename" and have it written outside the fonts directory.
-      if (!FontInstaller::isValidCpfontFilename(filename.c_str())) {
+      // a .cpfont/.ttf/.otf basename of alphanumeric + hyphen + underscore.
+      // Without this an attacker could supply
+      // "../../.crosspoint/settings.json" as a "filename" and have it written
+      // outside the fonts directory. Vector fonts need PSRAM to stay
+      // resident, so DRAM-only boards only accept .cpfont.
+      const bool psramCapable = HalMemory::getPsramHeap().totalBytes > 0;
+      fontUpload.isVector = psramCapable && FontInstaller::isValidVectorFontFilename(filename.c_str());
+      if (!fontUpload.isVector && !FontInstaller::isValidCpfontFilename(filename.c_str())) {
         LOG_ERR("WEB", "Invalid font filename: %s", filename.c_str());
         break;
       }
@@ -2885,8 +2975,17 @@ void CrossPointWebServer::handleFontUploadData() {
 
       // Validate magic bytes on first chunk only
       if (!fontUpload.magicChecked && upload.currentSize >= 8) {
-        if (memcmp(upload.buf, "CPFONT\0\0", 8) != 0) {
-          LOG_ERR("WEB", "Invalid .cpfont magic bytes");
+        bool magicOk;
+        if (fontUpload.isVector) {
+          // sfnt versions: 0x00010000 (TrueType), "OTTO" (CFF), "true" (Apple)
+          static constexpr uint8_t kTtfMagic[4] = {0x00, 0x01, 0x00, 0x00};
+          magicOk = memcmp(upload.buf, kTtfMagic, 4) == 0 || memcmp(upload.buf, "OTTO", 4) == 0 ||
+                    memcmp(upload.buf, "true", 4) == 0;
+        } else {
+          magicOk = memcmp(upload.buf, "CPFONT\0\0", 8) == 0;
+        }
+        if (!magicOk) {
+          LOG_ERR("WEB", "Invalid font magic bytes");
           fontUpload.valid = false;
           break;
         }
@@ -2964,7 +3063,7 @@ void CrossPointWebServer::handleFontUpload() {
     server->send(200, "application/json", "{\"ok\":true}");
     LOG_DBG("WEB", "Font upload complete: %s", fontUpload.filePath.c_str());
   } else {
-    server->send(400, "application/json", "{\"error\":\"Invalid .cpfont file\"}");
+    server->send(400, "application/json", "{\"error\":\"Invalid font file\"}");
   }
 }
 
