@@ -1,0 +1,13 @@
+# Secrets: .env holds the Fernet key and the Google client secret.
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# The live credential store: encrypted refresh tokens and device token hashes.
+data/
+
+.venv/
+__pycache__/
+BUILD
