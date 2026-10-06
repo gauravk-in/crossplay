@@ -261,12 +261,12 @@ void buildSignOutConfirm(toybox::Screen& screen, const int pendingCount) {
   if (pendingCount > 0) {
     std::snprintf(body, sizeof(body),
                   "This signs the reader out of Google. %d tick%s not sent yet will be lost. Signing in again "
-                  "takes a code and your phone.",
+                  "takes your phone.",
                   pendingCount, pendingCount == 1 ? " that was" : "s that were");
   } else {
     std::snprintf(body, sizeof(body),
-                  "This signs the reader out of Google and removes the list from the card. Signing in again takes a "
-                  "code and your phone.");
+                  "This signs the reader out of Google and removes the list from the card. Signing in again takes "
+                  "your phone.");
   }
   const fui::TextStyle prose = plain(toybox::kBodyFont, fui::TextAlign::Left, fui::Color::Black, 8);
   const int16_t h = static_cast<int16_t>(footerBand(device).y - toybox::kGutter * 2 - kBodyTop);
@@ -288,7 +288,7 @@ void buildSignIn(toybox::Screen& screen, const char* reason) {
   chrome(screen, "TASKS");
   const fui::DeviceContext& device = screen.device();
   const int16_t width = pageWidth(device);
-  footerButton(screen, footerBand(device), "GET A CODE", ActionGetCode, false);
+  footerButton(screen, footerBand(device), "START SIGN-IN", ActionStartSignIn, false);
 
   int16_t y = kBodyTop;
   const int16_t headlineH = screen.target().lineHeight(toybox::kDisplayFont);
@@ -300,8 +300,8 @@ void buildSignIn(toybox::Screen& screen, const char* reason) {
 
   const char* text = reason != nullptr && reason[0] != '\0'
                          ? reason
-                         : "Your Google Tasks list, on this reader. Get a code here, then sign in with Google on "
-                           "your phone. You do this once.";
+                         : "Your Google Tasks list, on this reader. Start here, then sign in with Google on your "
+                           "phone, on the same Wi-Fi. You do this once.";
   // A text area rather than a text run: it sits under the rule instead of
   // centring in the space, like the notice's message.
   fui::TextAreaProps message;
@@ -314,24 +314,22 @@ void buildSignIn(toybox::Screen& screen, const char* reason) {
       message);
 }
 
-fui::Rect buildPairQr(toybox::Screen& screen, const char* code, const char* address) {
+fui::Rect buildPhone(toybox::Screen& screen, const char* address) {
   chrome(screen, "SIGN IN");
   const fui::DeviceContext& device = screen.device();
   const int16_t width = pageWidth(device);
   const fui::Rect footer = footerBand(device);
-  footerButton(screen, footer, "CANCEL", ActionCancelPair, true);
+  footerButton(screen, footer, "CANCEL", ActionCancelSignIn, true);
 
-  // Bottom up: the caption and the address hug the footer, the code sits on
-  // them, and the QR takes what is left up to a size a camera reads at arm's
-  // length.
+  // Bottom up: the caption and the address hug the footer, and the QR takes
+  // what is left up to a size a camera reads at arm's length.
   const fui::TextStyle caption = plain(toybox::kTileFont, fui::TextAlign::Center, fui::Color::DarkGray);
   const int16_t captionH = screen.target().lineHeight(caption.font);
   const fui::TextStyle prose = plain(toybox::kUiFont, fui::TextAlign::Center, fui::Color::DarkGray);
   const int16_t proseH = screen.target().lineHeight(prose.font);
-  const int16_t codeH = screen.target().lineHeight(toybox::kDisplayFont);
 
   int16_t y = static_cast<int16_t>(footer.y - toybox::kGutter * 2 - captionH);
-  screen.target().text(fui::makeRect(toybox::kMargin, y, width, captionH), "CODE LASTS 5 MIN", caption);
+  screen.target().text(fui::makeRect(toybox::kMargin, y, width, captionH), "SAME WI-FI AS THE READER", caption);
   // The address on a line of its own, full width: it is one unbreakable token,
   // and a cut one is an address that does not exist.
   y = static_cast<int16_t>(y - toybox::kGutter - proseH);
@@ -339,54 +337,14 @@ fui::Rect buildPairQr(toybox::Screen& screen, const char* code, const char* addr
   addressStyle.color = fui::Color::Black;
   screen.target().text(fui::makeRect(toybox::kMargin, y, width, proseH), address, addressStyle);
   y = static_cast<int16_t>(y - proseH);
-  screen.target().text(fui::makeRect(toybox::kMargin, y, width, proseH), "Scan it, or type the code at", prose);
-  y = static_cast<int16_t>(y - toybox::kGutter - codeH);
-  screen.target().text(fui::makeRect(toybox::kMargin, y, width, codeH), code,
-                       plain(toybox::kDisplayFont, fui::TextAlign::Center));
+  screen.target().text(fui::makeRect(toybox::kMargin, y, width, proseH), "Scan it, or open on a phone", prose);
 
   const int16_t top = kBodyTop;
   int16_t side = static_cast<int16_t>(y - toybox::kGutter * 2 - top);
-  if (side > 260) side = 260;
+  if (side > 300) side = 300;
   if (side < 0) side = 0;
   const int16_t qrY = static_cast<int16_t>(top + (y - toybox::kGutter - top - side) / 2);
   return fui::makeRect(static_cast<int16_t>((device.width - side) / 2), qrY, side, side);
-}
-
-void buildPairConfirm(toybox::Screen& screen, const char* account) {
-  chrome(screen, "SIGN IN");
-  const fui::DeviceContext& device = screen.device();
-  const int16_t width = pageWidth(device);
-
-  int16_t y = kBodyTop;
-  const int16_t headlineH = screen.target().lineHeight(toybox::kDisplayFont);
-  screen.target().text(fui::makeRect(toybox::kMargin, y, width, headlineH), "IS THIS YOU?",
-                       plain(toybox::kDisplayFont, fui::TextAlign::Left));
-  y = static_cast<int16_t>(y + headlineH + toybox::kGutter);
-  screen.target().fill(fui::makeRect(toybox::kMargin, y, width, toybox::kRule), fui::Paint::solid(fui::Color::Black));
-  y = static_cast<int16_t>(y + toybox::kRule + toybox::kGutter * 2);
-
-  // An address is one long unbreakable token: two lines of the reading cut
-  // hold every real one, and fitLines cuts mid-token rather than vanishing.
-  const fui::TextStyle name = plain(toybox::kBodyFont, fui::TextAlign::Left, fui::Color::Black, 2);
-  const int16_t nameH = static_cast<int16_t>(screen.target().lineHeight(name.font) * 2);
-  const char* shownAccount = account != nullptr && account[0] != '\0' ? account : "a Google account";
-  const std::string fitted = toybox::fitLines(screen.target(), shownAccount, width, 2, name);
-  screen.target().text(fui::makeRect(toybox::kMargin, y, width, nameH), fitted.c_str(), name);
-  y = static_cast<int16_t>(y + nameH + toybox::kGutter * 2);
-
-  const fui::TextStyle prose = plain(toybox::kUiFont, fui::TextAlign::Left, fui::Color::DarkGray, 4);
-  const int16_t proseH = static_cast<int16_t>(screen.target().lineHeight(prose.font) * 4);
-  const std::string note = toybox::fitLines(
-      screen.target(), "This reader shows this account's tasks once you say yes. Nothing is kept before that.", width,
-      4, prose);
-  screen.target().text(fui::makeRect(toybox::kMargin, y, width, proseH), note.c_str(), prose);
-
-  const fui::Rect footer = footerBand(device);
-  const int16_t half = static_cast<int16_t>((footer.width - toybox::kGutter) / 2);
-  footerButton(screen, fui::makeRect(footer.x, footer.y, half, footer.height), "YES, USE IT", ActionPairYes, false);
-  footerButton(screen,
-               fui::makeRect(static_cast<int16_t>(footer.x + half + toybox::kGutter), footer.y, half, footer.height),
-               "NOT ME", ActionPairNo, true);
 }
 
 // --- Notices ---------------------------------------------------------------

@@ -14,6 +14,6 @@ BUILD_DIR="${TMPDIR:-/tmp}/$(basename "${CXX:-c++}")-gtasks-tests-$(cd ../.. && 
 mkdir -p "$BUILD_DIR"
 
 "${CXX:-c++}" -std=c++17 -O2 -Wall -Wextra -Werror \
-  ../../src/apps_local/gtasks/GTasksCore.cpp \
+  ../../src/apps_local/gtasks/GTasksCore.cpp ../../src/network/DeviceReportCore.cpp \
   test_core.cpp -o "$BUILD_DIR/test_core"
 "$BUILD_DIR/test_core"

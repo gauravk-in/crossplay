@@ -14766,41 +14766,27 @@ void signingInStartsWithOneButton() {
   Rendered out;
   render(out, [&](toybox::Screen& screen) { gtasksui::buildSignIn(screen, nullptr); });
   CHECK(drewText(out, "SIGN IN"));
-  CHECK(out.has(gtasksui::ActionGetCode));
-  CHECK(countOf(out, gtasksui::ActionGetCode) == 1);
-  // A reason from the service replaces the default sentence.
+  CHECK(countOf(out, gtasksui::ActionStartSignIn) == 1);
+  // A reason from Google replaces the default sentence.
   Rendered why;
   render(why, [&](toybox::Screen& screen) { gtasksui::buildSignIn(screen, "Google signed this reader out."); });
   CHECK(drewText(why, "Google signed this reader out."));
 }
 
-void theCodeSitsUnderItsQrWithTheAddress() {
+void thePhonePageQrSitsAboveItsAddress() {
   Rendered out;
   fui::Rect qr{};
-  render(out,
-         [&](toybox::Screen& screen) { qr = gtasksui::buildPairQr(screen, "K7P4M2XR", "tasks.example.com/pair"); });
-  CHECK(drewText(out, "K7P4M2XR"));
+  render(out, [&](toybox::Screen& screen) { qr = gtasksui::buildPhone(screen, "http://crossplay-1a2b.local/t"); });
   // The address whole, never cut: a truncated one does not exist.
-  CHECK(drewText(out, "tasks.example.com/pair"));
-  CHECK(out.has(gtasksui::ActionCancelPair));
+  CHECK(drewText(out, "http://crossplay-1a2b.local/t"));
+  CHECK(drewText(out, "SAME WI-FI AS THE READER"));
+  CHECK(out.has(gtasksui::ActionCancelSignIn));
   // Big enough for a phone at arm's length, and clear of the header band.
   CHECK(qr.width >= 180 && qr.width == qr.height);
-  CHECK(qr.y >= 60);  // below the header band
+  CHECK(qr.y >= 60);
   fui::Rect cancel{};
-  CHECK(rectOf(out, gtasksui::ActionCancelPair, -1, cancel));
+  CHECK(rectOf(out, gtasksui::ActionCancelSignIn, -1, cancel));
   CHECK(qr.y + qr.height < cancel.y);
-}
-
-void theConfirmNamesTheAccountAndAsks() {
-  Rendered out;
-  render(out, [&](toybox::Screen& screen) { gtasksui::buildPairConfirm(screen, "gaurav@example.com"); });
-  CHECK(drewText(out, "IS THIS YOU?"));
-  CHECK(drewText(out, "gaurav@example.com"));
-  fui::Rect yes{};
-  fui::Rect no{};
-  CHECK(rectOf(out, gtasksui::ActionPairYes, -1, yes));
-  CHECK(rectOf(out, gtasksui::ActionPairNo, -1, no));
-  CHECK(yes.x < no.x);
 }
 
 }  // namespace gtaskstest
@@ -14978,8 +14964,7 @@ int main() {
   gtaskstest::settingsOffersSignOutOnlyWhenSignedIn();
   gtaskstest::keepingTheAccountIsWhereTheThumbAlreadyIs();
   gtaskstest::signingInStartsWithOneButton();
-  gtaskstest::theCodeSitsUnderItsQrWithTheAddress();
-  gtaskstest::theConfirmNamesTheAccountAndAsks();
+  gtaskstest::thePhonePageQrSitsAboveItsAddress();
   notestest::aNoteAsleepIsReadOnlyAndTaller();
   wordletest::everyKeyIsWhereItIsDrawn();
   wordletest::aFinishedGameShowsTheAnswerAndLetsGo();

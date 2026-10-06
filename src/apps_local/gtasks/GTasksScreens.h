@@ -29,10 +29,8 @@ enum : fui::ActionId {
   ActionNotice = 367,
   ActionPagePrev = 368,
   ActionPageNext = 369,
-  ActionGetCode = 370,
-  ActionCancelPair = 371,
-  ActionPairYes = 372,
-  ActionPairNo = 373,
+  ActionStartSignIn = 370,
+  ActionCancelSignIn = 371,
 };
 
 // --- The list --------------------------------------------------------------
@@ -93,16 +91,12 @@ void buildSignOutConfirm(toybox::Screen& screen, int pendingCount);
 // --- Signing in ------------------------------------------------------------
 
 // Why sign-in is needed (or why it stopped working) and the one button that
-// starts it. `reason` replaces the default sentence when the service said why.
+// starts it. `reason` replaces the default sentence when Google said why.
 void buildSignIn(toybox::Screen& screen, const char* reason);
 
-// The code, twice on purpose: a QR for a phone's camera, the characters for a
-// person typing it at `address`. Returns the QR's rect for the encoder.
-fui::Rect buildPairQr(toybox::Screen& screen, const char* code, const char* address);
-
-// "Is this you?", before anything is kept. The account is the Google address
-// the code was signed in with; YES keeps the pairing, NOT ME drops it.
-void buildPairConfirm(toybox::Screen& screen, const char* account);
+// The phone's way in: a QR of the reader's own sign-in page, and the same
+// address in characters for typing. Returns the QR's rect for the encoder.
+fui::Rect buildPhone(toybox::Screen& screen, const char* address);
 
 // --- Notices ---------------------------------------------------------------
 

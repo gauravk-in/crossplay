@@ -51,20 +51,20 @@ Task task(const char* id, const char* title, const char* position, const char* p
 
 void testCredentialsRoundTrip() {
   gtasks::Credentials c;
-  c.deviceToken = "q3Zx-_device.token";
+  c.refreshToken = "1//0g-xyz";
   c.account = "gaurav@example.com";
   const gtasks::Credentials back = gtasks::parseCredentials(gtasks::serializeCredentials(c));
   CHECK(back.complete());
-  CHECK_EQ(back.deviceToken, c.deviceToken);
+  CHECK_EQ(back.refreshToken, c.refreshToken);
   CHECK_EQ(back.account, c.account);
 }
 
 void testCredentialsToleratesAHandEditedFile() {
   // Saved on Windows, with a comment and spaces round the '='.
   const gtasks::Credentials c =
-      gtasks::parseCredentials("# copied by hand\r\ntoken = a=b\r\n\r\naccount=me@x.com \r\n");
+      gtasks::parseCredentials("# copied by hand\r\nrefresh_token = a=b\r\n\r\naccount=me@x.com \r\n");
   // Only the first '=' separates; a token may carry its own.
-  CHECK_EQ(c.deviceToken, "a=b");
+  CHECK_EQ(c.refreshToken, "a=b");
   CHECK_EQ(c.account, "me@x.com");
   CHECK(c.complete());
 }
@@ -73,19 +73,69 @@ void testCredentialsWithoutATokenAreIncomplete() {
   CHECK(!gtasks::parseCredentials("account=me@x.com\n").complete());
   CHECK(!gtasks::parseCredentials("").complete());
   CHECK(!gtasks::parseCredentials("garbage without equals\n").complete());
-  // The computer sign-in's file, from before the service: not a device token.
-  CHECK(!gtasks::parseCredentials("client_id=a\nclient_secret=b\nrefresh_token=c\n").complete());
 }
 
-void testBridgeHostOverride() {
-  CHECK_EQ(gtasks::parseBridgeHost("# mine\nhost = tasks.example.com\n"), "tasks.example.com");
-  CHECK_EQ(gtasks::parseBridgeHost("host=127.0.0.1:8090\r\n"), "127.0.0.1:8090");
-  // Anything that would build a broken or redirected URL falls back.
-  CHECK_EQ(gtasks::parseBridgeHost("host=https://tasks.example.com\n"), "");
-  CHECK_EQ(gtasks::parseBridgeHost("host=tasks.example.com/evil\n"), "");
-  CHECK_EQ(gtasks::parseBridgeHost("host=a b\n"), "");
-  CHECK_EQ(gtasks::parseBridgeHost("host=\n"), "");
-  CHECK_EQ(gtasks::parseBridgeHost(""), "");
+void testClientConfig() {
+  const gtasks::Client c = gtasks::parseClient(
+      "# desktop client\nclient_id=123.apps.googleusercontent.com\n"
+      "client_secret = GOCSPX-abc\n");
+  CHECK(c.complete());
+  CHECK_EQ(c.id, "123.apps.googleusercontent.com");
+  CHECK_EQ(c.secret, "GOCSPX-abc");
+  CHECK(!gtasks::parseClient("client_id=only\n").complete());
+}
+
+void testPkceMatchesTheRfcVector() {
+  // RFC 7636 appendix B.
+  CHECK_EQ(gtasks::pkceChallenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"),
+           "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM");
+}
+
+void testAuthUrlAsksForWhatTheReaderNeeds() {
+  const std::string url = gtasks::authUrl("123.apps.googleusercontent.com", "CHAL", "ST8");
+  CHECK(url.rfind("https://accounts.google.com/o/oauth2/v2/auth?", 0) == 0);
+  CHECK(url.find("client_id=123.apps.googleusercontent.com") != std::string::npos);
+  CHECK(url.find("redirect_uri=http%3A%2F%2F127.0.0.1%3A1") != std::string::npos);
+  CHECK(url.find("https%3A%2F%2Fwww.googleapis.com%2Fauth%2Ftasks") != std::string::npos);
+  CHECK(url.find("access_type=offline") != std::string::npos);
+  CHECK(url.find("prompt=consent") != std::string::npos);
+  CHECK(url.find("code_challenge=CHAL&code_challenge_method=S256") != std::string::npos);
+  CHECK(url.find("state=ST8") != std::string::npos);
+}
+
+void testPastedAddresses() {
+  const std::string scope = "&scope=email%20https://www.googleapis.com/auth/tasks%20openid";
+  // The whole address, as a phone's address bar copies it.
+  gtasks::Pasted p = gtasks::parsePasted("http://127.0.0.1:1/?state=ST8&code=4/0Ab%2Bc" + scope, "ST8");
+  CHECK(p.ok());
+  CHECK_EQ(p.code, "4/0Ab+c");
+  // With spaces around it, and only the query.
+  p = gtasks::parsePasted("  state=ST8&code=xyz" + scope + " \n", "ST8");
+  CHECK_EQ(p.code, "xyz");
+  // No scope at all is not a refusal: older answers leave it out.
+  CHECK(gtasks::parsePasted("http://127.0.0.1:1/?code=abc&state=ST8", "ST8").ok());
+  // Another sign-in's address.
+  p = gtasks::parsePasted("http://127.0.0.1:1/?state=OTHER&code=abc", "ST8");
+  CHECK(!p.ok() && p.message.find("different") != std::string::npos);
+  // The person said no on the consent screen.
+  p = gtasks::parsePasted("http://127.0.0.1:1/?error=access_denied&state=ST8", "ST8");
+  CHECK(!p.ok() && p.message.find("told no") != std::string::npos);
+  // Tasks unticked.
+  p = gtasks::parsePasted("http://127.0.0.1:1/?state=ST8&code=abc&scope=email%20openid", "ST8");
+  CHECK(!p.ok() && p.message.find("Tasks") != std::string::npos);
+  // Not an address at all.
+  p = gtasks::parsePasted("hello", "ST8");
+  CHECK(!p.ok() && !p.message.empty());
+}
+
+void testIdTokenEmail() {
+  // {"aud":"x","email_verified":true,"email":"me@x.com","sub":"1"}
+  const std::string token =
+      "eyJhbGciOiJSUzI1NiJ9."
+      "eyJhdWQiOiJ4IiwiZW1haWxfdmVyaWZpZWQiOnRydWUsImVtYWlsIjoibWVAeC5jb20iLCJzdWIiOiIxIn0.sig";
+  CHECK_EQ(gtasks::idTokenEmail(token), "me@x.com");
+  CHECK_EQ(gtasks::idTokenEmail("not-a-token"), "");
+  CHECK_EQ(gtasks::idTokenEmail(""), "");
 }
 
 void testCacheRoundTrip() {
@@ -214,7 +264,11 @@ int main() {
   testCredentialsRoundTrip();
   testCredentialsToleratesAHandEditedFile();
   testCredentialsWithoutATokenAreIncomplete();
-  testBridgeHostOverride();
+  testClientConfig();
+  testPkceMatchesTheRfcVector();
+  testAuthUrlAsksForWhatTheReaderNeeds();
+  testPastedAddresses();
+  testIdTokenEmail();
   testCacheRoundTrip();
   testCacheDropsDamageNotTheFile();
   testACacheFromSomebodyElseIsEmpty();

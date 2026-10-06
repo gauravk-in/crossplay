@@ -1,9 +1,11 @@
 #include "GTasksActivity.h"
 
+#include <ESPmDNS.h>
 #include <HalGPIO.h>
 #include <Logging.h>
 #include <Memory.h>
 #include <WiFi.h>
+#include <esp_random.h>
 
 #include <algorithm>
 #include <cstdio>
@@ -14,6 +16,7 @@
 #include "../../WifiCredentialStore.h"
 #include "../../activities/network/WifiSelectionActivity.h"
 #include "../../components/UITheme.h"
+#include "../../util/DeviceHostname.h"
 #include "../../util/QrUtils.h"
 #include "../Shelf.h"
 #include "../ui/Toybox.h"
@@ -36,9 +39,23 @@ constexpr int64_t kClockFloor = 1700000000;
 // loop: nobody asked for this one.
 constexpr uint32_t kJoinTimeoutMs = 15000;
 
-// How often the code screen asks whether a phone has signed in yet. Each ask
-// is one small request; the person is on a consent screen for most of it.
-constexpr uint32_t kPairPollMs = 2000;
+// How long the sign-in page stays up after it worked, so the phone's next
+// status poll hears "done" instead of a dead address.
+constexpr uint32_t kDoneLingerMs = 3000;
+
+// `bytes` of the hardware RNG as lowercase hex: PKCE's verifier (RFC 7636
+// allows [A-Za-z0-9-._~], 43 to 128 of them) and the sign-in's state.
+std::string randomHex(const size_t bytes) {
+  static constexpr char kHex[] = "0123456789abcdef";
+  std::string out;
+  out.reserve(bytes * 2);
+  for (size_t i = 0; i < bytes; ++i) {
+    const uint8_t b = static_cast<uint8_t>(esp_random());
+    out += kHex[b >> 4];
+    out += kHex[b & 0x0f];
+  }
+  return out;
+}
 
 }  // namespace
 
@@ -55,7 +72,7 @@ void GTasksActivity::onEnter() {
   meta_ = library_.loadMeta();
   tasks_ = library_.loadTasks();
   wasCharging_ = gpio.isUsbConnected();
-  api_.setBridgeHost(library_.loadBridgeHost());
+  client_ = library_.loadClient();
   reloadCredentials();
   LOG_INF(kTag, "opened: %d tasks, %d to send, %s, poll %u min", static_cast<int>(tasks_.size()),
           gtasks::pendingCount(tasks_), creds_.complete() ? "signed in" : "not signed in",
@@ -64,6 +81,7 @@ void GTasksActivity::onEnter() {
 }
 
 void GTasksActivity::onExit() {
+  stopPhone();
   Activity::onExit();
   // The Instapaper rule: a radio this app brought up comes down with it, and
   // never one Developer Mode holds.
@@ -80,9 +98,9 @@ void GTasksActivity::onExit() {
 bool GTasksActivity::polling() const { return creds_.complete() && settings_.pollMinutes > 0; }
 
 bool GTasksActivity::preventAutoSleep() {
-  // A code on the glass is someone signing in on a phone; sleeping would take
-  // the QR away mid-way.
-  if (phase_ == Phase::Pairing || phase_ == Phase::PairConfirm) return true;
+  // A QR on the glass is someone signing in on a phone; sleeping would take
+  // the page away mid-way.
+  if (server_ && server_->isRunning()) return true;
   return polling() && gpio.isUsbConnected();
 }
 
@@ -182,16 +200,22 @@ void GTasksActivity::releaseWifi() {
   }
 }
 #else
-// The simulator has the laptop's network and no radio to own.
+// The simulator has the laptop's network and no radio to own. The sign-in
+// page still yields Developer Mode, so that is still given back.
 bool GTasksActivity::joinWifi(std::string&) { return true; }
-void GTasksActivity::releaseWifi() {}
+void GTasksActivity::releaseWifi() {
+  if (yieldedDevMode_) {
+    devmode::resume();
+    yieldedDevMode_ = false;
+  }
+}
 #endif
 
 // --- Syncing ---------------------------------------------------------------
 
 bool GTasksActivity::ensureToken(std::string& message) {
   if (token_.usable(millis())) return true;
-  if (api_.refresh(creds_, millis(), token_, message)) return true;
+  if (api_.refresh(client_, creds_, millis(), token_, message)) return true;
   if (api_.signedOut) {
     RenderLock lock(*this);
     signInReason_ = message;
@@ -296,7 +320,7 @@ void GTasksActivity::onWifiChosen(const bool connected) {
     show(creds_.complete() ? Phase::List : Phase::SignIn);
     return;
   }
-  requestStep(step, step == Step::PairStart ? "GETTING A CODE" : "SYNCING");
+  requestStep(step, step == Step::SignIn ? "STARTING" : "SYNCING");
 }
 
 void GTasksActivity::runStep(const Step step) {
@@ -310,8 +334,8 @@ void GTasksActivity::runStep(const Step step) {
                            [this](const ActivityResult& result) { onWifiChosen(!result.isCancelled); });
     return;
   }
-  if (step == Step::PairStart) {
-    startPairing();
+  if (step == Step::SignIn) {
+    startPhone();
     return;
   }
   lastAttemptMs_ = millis();
@@ -344,77 +368,108 @@ void GTasksActivity::backgroundPoll() {
   if (changed || flipped || phase_ == Phase::SignIn) requestUpdate();
 }
 
-// --- Pairing ---------------------------------------------------------------
+// --- Signing in ------------------------------------------------------------
 
-void GTasksActivity::startPairing() {
-  gtasks::Api::PairStart start;
-  std::string message;
-  if (!api_.pairStart(start, message)) {
-    showNotice("NO CODE", message);
+void GTasksActivity::startSignIn() {
+  client_ = library_.loadClient();
+  if (!client_.complete()) {
+    showNotice("NO GOOGLE CLIENT",
+               "This reader has no Google sign-in client. Put client_id= and client_secret= lines in "
+               "/.crosspoint/gtasks/client.cfg on the card. docs/apps/gtasks.md says how to make one.");
     return;
   }
-  {
-    RenderLock lock(*this);
-    pairCode_ = start.code;
-    pollToken_ = start.pollToken;
-    phase_ = Phase::Pairing;
-  }
-  lastPairPollMs_ = millis();
-  requestUpdate();
+  requestStep(Step::SignIn, "STARTING");
 }
 
-void GTasksActivity::pollPairing() {
-  lastPairPollMs_ = millis();
-  std::string account;
-  std::string token;
-  std::string message;
-  const int result = api_.pairPoll(pollToken_, account, token, message);
-  if (result == 0) return;  // still waiting; the QR stays on the glass
-  pollToken_.clear();
-  if (result < 0) {
-    showNotice("THAT CODE IS GONE", message.empty() ? "Ask for a fresh one." : message);
+void GTasksActivity::startPhone() {
+  // Developer Mode holds port 80 while its toggle is on. joinWifi() may have
+  // paused it already; if the radio was up anyway, pause it here, so the one
+  // release in releaseWifi() covers both.
+  if (!yieldedDevMode_) {
+    devmode::pause();
+    yieldedDevMode_ = true;
+  }
+#ifdef SIMULATOR
+  // The simulator's Wi-Fi joins whatever it is asked to, and then the page
+  // really serves on the host (port 8080), so a sign-in can run end to end.
+  if (WiFi.status() != WL_CONNECTED) {
+    WiFi.mode(WIFI_STA);
+    WiFi.begin("simulator");
+  }
+#endif
+  server_ = makeUniqueNoThrow<CrossPointWebServer>(CrossPointWebServer::Surface::TasksOnly);
+  if (!server_) {
+    showNotice("NOT STARTED", "There was not enough memory to start the sign-in page.");
     return;
   }
-  // Delivered, and still not kept: a button on THIS reader decides. That is
-  // what stops a code someone else saw from pairing their account here.
-  {
-    RenderLock lock(*this);
-    pendingToken_ = token;
-    pendingAccount_ = account;
-    phase_ = Phase::PairConfirm;
+  // Fresh for every attempt: an address pasted from an earlier one names a
+  // different state and is refused.
+  verifier_ = randomHex(32);
+  state_ = randomHex(12);
+  server_->setTasksLink(gtasks::authUrl(client_.id, gtasks::pkceChallenge(verifier_), state_));
+  server_->begin();
+#ifndef SIMULATOR
+  if (!server_->isRunning()) {
+    stopPhone();
+    showNotice("NOT STARTED", "The reader could not open its sign-in page. Try again in a moment.");
+    return;
   }
-  requestUpdate();
+  MDNS.end();
+  const bool mdnsUp = MDNS.begin(devicehost::mdnsName());
+  // The QR carries the address, never the name: see NotesActivity::startPhone.
+  phoneUrl_ = std::string("http://") + WiFi.localIP().toString().c_str() + "/t";
+  phoneReadable_ = mdnsUp ? std::string("http://") + devicehost::mdnsName() + ".local/t" : phoneUrl_;
+#else
+  phoneUrl_ = "http://127.0.0.1/t";
+  phoneReadable_ = phoneUrl_;
+#endif
+  LOG_INF(kTag, "sign-in page up at %s", phoneUrl_.c_str());
+  show(Phase::Phone);
 }
 
-void GTasksActivity::acceptPairing() {
+void GTasksActivity::stopPhone() {
+  if (!server_) return;
+  server_->stop();
+  server_.reset();
+#ifndef SIMULATOR
+  MDNS.end();
+#endif
+  verifier_.clear();
+  state_.clear();
+}
+
+void GTasksActivity::takePaste(const std::string& pasted) {
+  const gtasks::Pasted parsed = gtasks::parsePasted(pasted, state_);
+  if (!parsed.ok()) {
+    server_->setTasksStatus("error", parsed.message);
+    return;
+  }
+  paintBusyNow("SIGNING IN");
   gtasks::Credentials creds;
-  creds.deviceToken = pendingToken_;
-  creds.account = pendingAccount_;
-  if (!library_.saveCredentials(creds)) {
-    showNotice("NOT SAVED", "The card would not take the sign-in. Check it is not full or locked.");
+  std::string message;
+  if (!api_.exchange(client_, parsed.code, verifier_, creds, message)) {
+    server_->setTasksStatus("error", message);
+    show(Phase::Phone);
     return;
   }
-  pendingToken_.clear();
-  pendingAccount_.clear();
-  pairCode_.clear();
+  if (!library_.saveCredentials(creds)) {
+    server_->setTasksStatus("error", "The reader's card would not take the sign-in. Check it is not full or locked.");
+    show(Phase::Phone);
+    return;
+  }
+  server_->setTasksStatus("done", "Signed in as " +
+                                      (creds.account.empty() ? std::string("your account") : creds.account) +
+                                      ". The reader is fetching your list. You can close this page.");
+  const uint32_t until = millis() + kDoneLingerMs;
+  while (static_cast<int32_t>(until - millis()) > 0 && server_->isRunning()) {
+    server_->handleClient();
+    delay(10);
+  }
+  stopPhone();
   reloadCredentials();
   everAttempted_ = false;
   LOG_INF(kTag, "signed in");
   requestRefresh();
-}
-
-void GTasksActivity::abandonPairing() {
-  // Told to the service so the code stops being claimable and a declined
-  // pairing is revoked rather than left as a reader nobody holds. Painted
-  // first: it is a TLS round trip, and the QR frozen on the glass meanwhile
-  // reads as a hang.
-  paintBusyNow("CANCELLING");
-  api_.pairAbandon(pollToken_, pendingToken_);
-  pollToken_.clear();
-  pendingToken_.clear();
-  pendingAccount_.clear();
-  pairCode_.clear();
-  show(Phase::SignIn);
 }
 
 // --- Ticks and pages -------------------------------------------------------
@@ -445,9 +500,9 @@ void GTasksActivity::stepPage(const int delta) {
 void GTasksActivity::signOut() {
   // Best effort, and only on a radio that is already up: the token is erased
   // from the card below either way, so this reader can never use it again.
-  if (!creds_.deviceToken.empty() && WiFi.status() == WL_CONNECTED) {
+  if (!creds_.refreshToken.empty() && WiFi.status() == WL_CONNECTED) {
     paintBusyNow("SIGNING OUT");
-    api_.unpair(creds_.deviceToken);
+    api_.revoke(creds_.refreshToken);
   }
   library_.signOut();
   {
@@ -482,9 +537,9 @@ void GTasksActivity::loop() {
       case Phase::SignOutConfirm:
         show(Phase::Settings);
         break;
-      case Phase::Pairing:
-      case Phase::PairConfirm:
-        abandonPairing();
+      case Phase::Phone:
+        stopPhone();
+        show(Phase::SignIn);
         break;
       case Phase::Settings:
       case Phase::Notice:
@@ -504,11 +559,15 @@ void GTasksActivity::loop() {
     requestUpdate();
   }
 
-  // Read after Back, and without sleeping, so walking away from the code is
-  // answered at once rather than after a poll.
-  if (phase_ == Phase::Pairing && !pollToken_.empty() && millis() - lastPairPollMs_ >= kPairPollMs) {
-    pollPairing();
-    return;
+  // Pumped from loop() after Back, as Notes does: there are no background
+  // threads, and walking away from the QR is answered at once.
+  if (server_ && server_->isRunning()) {
+    for (int i = 0; i < 8 && server_->isRunning(); ++i) server_->handleClient();
+    std::string pasted;
+    if (server_->takeTasksPaste(pasted)) {
+      takePaste(pasted);
+      return;
+    }
   }
 
   if (phase_ == Phase::List && polling() &&
@@ -547,15 +606,12 @@ void GTasksActivity::loop() {
     case gtasksui::ActionRefresh:
       requestRefresh();
       break;
-    case gtasksui::ActionGetCode:
-      requestStep(Step::PairStart, "GETTING A CODE");
+    case gtasksui::ActionStartSignIn:
+      startSignIn();
       break;
-    case gtasksui::ActionCancelPair:
-    case gtasksui::ActionPairNo:
-      abandonPairing();
-      break;
-    case gtasksui::ActionPairYes:
-      if (!pendingToken_.empty()) acceptPairing();
+    case gtasksui::ActionCancelSignIn:
+      stopPhone();
+      show(Phase::SignIn);
       break;
     case gtasksui::ActionPagePrev:
       stepPage(-1);
@@ -631,17 +687,12 @@ void GTasksActivity::render(RenderLock&&) {
       gtasksui::buildSignIn(screen, signInReason_.c_str());
       what = "Tasks sign in";
       break;
-    case Phase::Pairing: {
-      const std::string address = api_.pairAddress();
-      const fui::Rect qr = gtasksui::buildPairQr(screen, pairCode_.c_str(), address.c_str());
-      if (qr.width > 0) QrUtils::drawQrCode(renderer, Rect{qr.x, qr.y, qr.width, qr.height}, api_.pairUrl(pairCode_));
-      what = "Tasks pairing";
+    case Phase::Phone: {
+      const fui::Rect qr = gtasksui::buildPhone(screen, phoneReadable_.c_str());
+      if (qr.width > 0) QrUtils::drawQrCode(renderer, Rect{qr.x, qr.y, qr.width, qr.height}, phoneUrl_);
+      what = "Tasks phone";
       break;
     }
-    case Phase::PairConfirm:
-      gtasksui::buildPairConfirm(screen, pendingAccount_.c_str());
-      what = "Tasks confirm";
-      break;
     case Phase::Settings: {
       const std::string poll = gtasks::pollLabel(settings_.pollMinutes);
       gtasksui::SettingsModel model;

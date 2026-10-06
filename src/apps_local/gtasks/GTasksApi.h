@@ -1,19 +1,17 @@
 #pragma once
 
-// The reader's half of the conversation with Google, and with the sign-in
-// service (server/tasks-bridge) that stands in for Google's device sign-in.
+// The reader's half of the conversation with Google.
 //
-// The service pairs this reader to a Google account (start / poll / on-device
-// confirm, like the Instapaper bridge) and afterwards trades this reader's
-// device token for a short-lived access token. Everything else goes straight
-// to tasks.googleapis.com: read the default list's name, read its open tasks,
-// mark one completed. The reader never holds Google's refresh token or the
-// client secret.
+// Sign-in: trade the code a phone brought back for a refresh token, and
+// revoke it on sign-out. Every sync: trade the refresh token for an access
+// token, read the default list's name, read its open tasks, mark one
+// completed. Nothing goes anywhere but Google.
 //
 // Transport is bridge::request (verified TLS on the device, curl in the
-// simulator), not HttpDownloader, which calls setInsecure(). The baked root
-// bundle holds GTS Root R1 and R4, which googleapis.com chains to;
-// /.crosspoint/gtasks/.roots.pem overrides it.
+// simulator), not HttpDownloader, which calls setInsecure() -- and a request
+// carrying a refresh token to whoever answers is a request handing them the
+// account. The baked root bundle holds GTS Root R1 and R4, which googleapis.com
+// chains to; /.crosspoint/gtasks/.roots.pem overrides it.
 //
 // Every failure fills `message` with a sentence the screen shows verbatim.
 
@@ -35,35 +33,20 @@ struct AccessToken {
 
 class Api {
  public:
-  // The sign-in service's host: bridge.cfg's, or the one compiled in when that
-  // is "".
-  void setBridgeHost(const std::string& host);
-  // The address the reader's QR points at, the code in its fragment so it
-  // never reaches a server log.
-  std::string pairUrl(const std::string& code) const;
-  // What the sign-in screen tells a person to type: host and path, no scheme.
-  std::string pairAddress() const;
+  // The end of a sign-in: the code from the pasted address, and the PKCE
+  // verifier it was asked for with. Fills the refresh token and the address.
+  bool exchange(const Client& client, const std::string& code, const std::string& verifier, Credentials& out,
+                std::string& message);
+  // Best effort on sign-out: tells Google to drop the grant, so the token on
+  // a card that is copied later is worth nothing.
+  void revoke(const std::string& refreshToken);
 
-  struct PairStart {
-    std::string code;
-    std::string pollToken;
-  };
-  bool pairStart(PairStart& out, std::string& message);
-  // 1 delivered (account+token filled), 0 still pending, -1 failed/expired.
-  int pairPoll(const std::string& pollToken, std::string& account, std::string& token, std::string& message);
-  // Best effort on any walk-away: a pollToken kills the pending code, a
-  // deviceToken revokes a pairing the confirm screen declined.
-  void pairAbandon(const std::string& pollToken, const std::string& deviceToken);
-  // Best effort on sign-out. The service revokes the Google grant when this was
-  // the account's last reader.
-  void unpair(const std::string& deviceToken);
-
-  // True after the service refused the device token: unpaired, or Google
-  // revoked the grant. The card's auth.cfg is then useless and the screen has
-  // to say to sign in again rather than "try later".
+  // True after Google refused the refresh token itself (revoked, expired, or a
+  // client in Testing mode a week later). The card's auth.cfg is then useless
+  // and the screen has to say to sign in again rather than "try later".
   bool signedOut = false;
 
-  bool refresh(const Credentials& creds, uint32_t nowMs, AccessToken& out, std::string& message);
+  bool refresh(const Client& client, const Credentials& creds, uint32_t nowMs, AccessToken& out, std::string& message);
 
   // The default list's title, for the header. "" when Google did not say.
   bool listTitle(const AccessToken& token, std::string& title, std::string& message);
@@ -79,12 +62,6 @@ class Api {
   // True when the last call failed because the access token was refused, so
   // the caller can refresh once and retry.
   bool tokenRefused = false;
-
- private:
-  int callBridge(const char* method, const std::string& path, const std::string& token, const std::string& body,
-                 std::string& response, std::string& message) const;
-
-  std::string bridgeHost_;
 };
 
 }  // namespace gtasks

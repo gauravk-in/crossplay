@@ -23,12 +23,13 @@
 //    rejoining Wi-Fi every minute is most of what a poll would cost, and is
 //    put down when the cable comes out.
 //
-// 4. Signing in goes through server/tasks-bridge, because Google's device
-//    sign-in does not allow the Tasks scope. The reader shows a code and a QR,
-//    a phone signs in to Google against it, and the reader asks "is this
-//    you?" with the address before it keeps anything -- Instapaper's
-//    handshake. What it keeps is a device token for the service, which trades
-//    it for an hour's Google access token whenever a sync needs one.
+// 4. Signing in happens on the reader, with no service in between. Google's
+//    device sign-in does not allow the Tasks scope, so the reader runs the
+//    installed-app flow: it serves a one-page sign-in site on its own Wi-Fi
+//    address and shows it as a QR. The phone opens Google's consent screen
+//    from there, lands on a 127.0.0.1 page that will not load, and pastes that
+//    address back. The reader trades the code in it for a refresh token and
+//    keeps it in auth.cfg on the card. See GTasksCore.h, "Signing in".
 // ---------------------------------------------------------------------------
 
 #include <cstdint>
@@ -37,6 +38,7 @@
 #include <vector>
 
 #include "../../activities/Activity.h"
+#include "../../network/CrossPointWebServer.h"
 #include "../ui/ToyboxScreen.h"
 #include "GTasksApi.h"
 #include "GTasksCore.h"
@@ -56,11 +58,12 @@ class GTasksActivity final : public Activity {
   void render(RenderLock&&) override;
   // Awake only while it is doing the job it was left on the charger to do.
   bool preventAutoSleep() override;
+  bool skipLoopDelay() override { return server_ && server_->isRunning(); }
 
  private:
-  enum class Phase : uint8_t { List, Settings, SignOutConfirm, SignIn, Pairing, PairConfirm, Busy, Notice };
+  enum class Phase : uint8_t { List, Settings, SignOutConfirm, SignIn, Phone, Busy, Notice };
   // What the busy screen announced and the next pass runs.
-  enum class Step : uint8_t { None, Sync, PairStart };
+  enum class Step : uint8_t { None, Sync, SignIn };
 
   void show(Phase phase);
   void showNotice(const char* headline, std::string message);
@@ -69,10 +72,10 @@ class GTasksActivity final : public Activity {
   void requestRefresh();
   void onWifiChosen(bool connected);
   void runStep(Step step);
-  void startPairing();
-  void pollPairing();
-  void acceptPairing();
-  void abandonPairing();
+  void startSignIn();
+  void startPhone();
+  void stopPhone();
+  void takePaste(const std::string& pasted);
   // The whole sync: push ticks, read the list, merge, save. Returns false with
   // `message` filled when it could not finish. `changed` says whether the
   // glass would now look different.
@@ -89,6 +92,7 @@ class GTasksActivity final : public Activity {
 
   gtasks::Library library_;
   gtasks::Api api_;
+  gtasks::Client client_;
   gtasks::Credentials creds_;
   gtasks::AccessToken token_;
   gtasks::Settings settings_;
@@ -105,12 +109,14 @@ class GTasksActivity final : public Activity {
   // Why the sign-in screen is up, when it is not simply "never signed in".
   std::string signInReason_;
 
-  // Pairing, in flight. Nothing reaches the card until YES on the confirm.
-  std::string pairCode_;
-  std::string pollToken_;
-  std::string pendingToken_;
-  std::string pendingAccount_;
-  uint32_t lastPairPollMs_ = 0;
+  // A sign-in in flight: the page the phone opens, and the PKCE verifier and
+  // state its consent address was made with. Nothing reaches the card until
+  // Google has traded the pasted code for a token.
+  std::unique_ptr<CrossPointWebServer> server_;
+  std::string verifier_;
+  std::string state_;
+  std::string phoneUrl_;
+  std::string phoneReadable_;
 
   // The charger's schedule. Attempts, not successes: see gtasks::pollDue.
   bool everAttempted_ = false;

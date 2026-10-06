@@ -14,7 +14,7 @@ constexpr const char* kAuth = "/.crosspoint/gtasks/auth.cfg";
 constexpr const char* kTasks = "/.crosspoint/gtasks/tasks.tsv";
 constexpr const char* kSettings = "/.crosspoint/gtasks/settings.cfg";
 constexpr const char* kMeta = "/.crosspoint/gtasks/meta.cfg";
-constexpr const char* kBridge = "/.crosspoint/gtasks/bridge.cfg";
+constexpr const char* kClient = "/.crosspoint/gtasks/client.cfg";
 
 // Larger than any of these files has reason to be: five pages of a hundred
 // tasks is well under it. A bigger file is not ours, and reading it whole
@@ -56,7 +56,7 @@ Credentials Library::loadCredentials() const {
   std::string text;
   if (!readWhole(kAuth, text)) return Credentials{};
   const Credentials creds = parseCredentials(text);
-  if (!creds.complete()) LOG_ERR(kTag, "auth.cfg is on the card but holds no device token");
+  if (!creds.complete()) LOG_ERR(kTag, "auth.cfg is on the card but holds no refresh token");
   return creds;
 }
 
@@ -64,12 +64,19 @@ bool Library::saveCredentials(const Credentials& creds) const {
   return writeAtomically(kAuth, serializeCredentials(creds));
 }
 
-std::string Library::loadBridgeHost() const {
+Client Library::loadClient() const {
   std::string text;
-  if (!readWhole(kBridge, text)) return std::string();
-  const std::string host = parseBridgeHost(text);
-  if (host.empty()) LOG_ERR(kTag, "bridge.cfg has no usable host=; using the built-in one");
-  return host;
+  if (readWhole(kClient, text)) {
+    const Client client = parseClient(text);
+    if (client.complete()) return client;
+    LOG_ERR(kTag, "client.cfg is on the card but is missing client_id or client_secret");
+  }
+  Client built;
+#if defined(GTASKS_CLIENT_ID) && defined(GTASKS_CLIENT_SECRET)
+  built.id = GTASKS_CLIENT_ID;
+  built.secret = GTASKS_CLIENT_SECRET;
+#endif
+  return built;
 }
 
 void Library::signOut() const {

@@ -16,10 +16,9 @@
 // tick made with no Wi-Fi is not lost and a tick made on a train is not a
 // failure.
 //
-// Sign-in is not here. Google's device flow refuses the Tasks scope, so a
-// small service (server/tasks-bridge) holds the Google grant; the card holds
-// only that service's device token, in auth.cfg, and trades it for an hour's
-// access token whenever a sync needs one.
+// Sign-in happens on the reader too (see "Signing in" below). The card holds
+// the refresh token in auth.cfg; every access token after that the reader gets
+// for itself.
 // ---------------------------------------------------------------------------
 
 #include <cstdint>
@@ -43,13 +42,13 @@ struct Task {
   bool pending = false;
 };
 
-// What auth.cfg carries, one `key=value` per line: the sign-in service's
-// device token for this reader, and the Google address it was paired to (shown
-// on the sign-out confirm). The reader never holds Google's refresh token.
+// What auth.cfg carries, one `key=value` per line: Google's refresh token for
+// this reader, and the address it belongs to (shown on the sign-out confirm).
+// Written by the reader itself when a sign-in finishes.
 struct Credentials {
-  std::string deviceToken;
+  std::string refreshToken;
   std::string account;
-  bool complete() const { return !deviceToken.empty(); }
+  bool complete() const { return !refreshToken.empty(); }
 };
 
 // Lines that are blank, `#` comments or unknown keys are skipped; a CR from a
@@ -58,10 +57,52 @@ struct Credentials {
 Credentials parseCredentials(const std::string& text);
 std::string serializeCredentials(const Credentials& creds);
 
-// bridge.cfg's `host=`: where the sign-in service lives, overriding the one
-// compiled in. "" when absent or when the value is not a plain host name, so a
-// stray scheme, path or space falls back rather than building a broken URL.
-std::string parseBridgeHost(const std::string& text);
+// The Google Cloud OAuth client the reader signs in as: a "Desktop app" client
+// with the Tasks API enabled. Google treats a desktop client's secret as
+// public, which is why it may sit on a card or in a build; what is private is
+// each person's refresh token, and that never leaves their card.
+struct Client {
+  std::string id;
+  std::string secret;
+  bool complete() const { return !id.empty() && !secret.empty(); }
+};
+
+// client.cfg: `client_id=` and `client_secret=`, the same shape as auth.cfg.
+Client parseClient(const std::string& text);
+
+// --- Signing in --------------------------------------------------------------
+//
+// Google's device flow refuses the Tasks scope, so the reader runs the
+// installed-app flow itself. It makes a PKCE verifier and a state, a phone
+// opens the consent URL from the reader's own Wi-Fi page, and Google sends the
+// phone's browser to http://127.0.0.1 -- which fails to load on the phone, with
+// the one-time code in its address. The person pastes that address back into
+// the reader's page, and the reader trades the code for a refresh token.
+
+constexpr const char* kRedirectUri = "http://127.0.0.1:1";
+constexpr const char* kScopes = "openid email https://www.googleapis.com/auth/tasks";
+
+// base64url(sha256(verifier)), unpadded: PKCE's S256 challenge.
+std::string pkceChallenge(const std::string& verifier);
+
+// The consent URL a phone opens.
+std::string authUrl(const std::string& clientId, const std::string& challenge, const std::string& state);
+
+// What a pasted address said. `code` is set on success; otherwise `message` is
+// a sentence for the page. The address is whatever the person copied: the
+// whole URL, or just its query, with or without stray spaces.
+struct Pasted {
+  std::string code;
+  std::string message;
+  bool ok() const { return !code.empty(); }
+};
+Pasted parsePasted(const std::string& pasted, const std::string& expectedState);
+
+// The `email` claim of an id_token, read without verifying its signature.
+// That is allowed only because it arrives straight from Google's token
+// endpoint over TLS in answer to our own code exchange (OpenID Connect Core
+// 3.1.3.7); "" when it cannot be read.
+std::string idTokenEmail(const std::string& idToken);
 
 // --- The cache -------------------------------------------------------------
 

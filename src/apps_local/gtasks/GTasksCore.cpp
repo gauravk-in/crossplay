@@ -4,6 +4,8 @@
 #include <cstdio>
 #include <cstdlib>
 
+#include "../../network/DeviceReportCore.h"
+
 namespace gtasks {
 namespace {
 
@@ -71,17 +73,98 @@ bool isKnownChoice(const uint16_t minutes) {
 
 }  // namespace
 
-Credentials parseCredentials(const std::string& text) {
-  Credentials out;
+namespace {
+
+// Every `key=value` line of a small config file, in order. Blank lines and
+// `#` comments are skipped; only the first '=' separates.
+std::vector<std::pair<std::string, std::string>> keyValues(const std::string& text) {
+  std::vector<std::pair<std::string, std::string>> out;
   for (const std::string& raw : lines(text)) {
     const std::string line = trim(raw);
     if (line.empty() || line[0] == '#') continue;
     const size_t eq = line.find('=');
     if (eq == std::string::npos) continue;
-    const std::string key = trim(line.substr(0, eq));
-    const std::string value = trim(line.substr(eq + 1));
-    if (key == "token") {
-      out.deviceToken = value;
+    out.emplace_back(trim(line.substr(0, eq)), trim(line.substr(eq + 1)));
+  }
+  return out;
+}
+
+std::string base64Url(const uint8_t* data, const size_t len) {
+  static constexpr char kAlphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+  std::string out;
+  out.reserve((len * 4 + 2) / 3);
+  for (size_t i = 0; i < len; i += 3) {
+    const uint32_t n =
+        (static_cast<uint32_t>(data[i]) << 16) | (i + 1 < len ? data[i + 1] << 8 : 0) | (i + 2 < len ? data[i + 2] : 0);
+    out += kAlphabet[(n >> 18) & 63];
+    out += kAlphabet[(n >> 12) & 63];
+    if (i + 1 < len) out += kAlphabet[(n >> 6) & 63];
+    if (i + 2 < len) out += kAlphabet[n & 63];
+  }
+  return out;
+}
+
+// base64url without padding, as JWT segments are; '+' and '/' are taken too.
+// Stops at the first character that is neither.
+std::string fromBase64Url(const std::string& in) {
+  std::string out;
+  uint32_t acc = 0;
+  int bits = 0;
+  for (const char c : in) {
+    int v;
+    if (c >= 'A' && c <= 'Z') {
+      v = c - 'A';
+    } else if (c >= 'a' && c <= 'z') {
+      v = c - 'a' + 26;
+    } else if (c >= '0' && c <= '9') {
+      v = c - '0' + 52;
+    } else if (c == '-' || c == '+') {
+      v = 62;
+    } else if (c == '_' || c == '/') {
+      v = 63;
+    } else {
+      break;
+    }
+    acc = (acc << 6) | static_cast<uint32_t>(v);
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      out += static_cast<char>((acc >> bits) & 0xFF);
+    }
+  }
+  return out;
+}
+
+int hexValue(const char c) {
+  if (c >= '0' && c <= '9') return c - '0';
+  if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+  if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+  return -1;
+}
+
+std::string urlDecode(const std::string& in) {
+  std::string out;
+  out.reserve(in.size());
+  for (size_t i = 0; i < in.size(); ++i) {
+    if (in[i] == '+') {
+      out += ' ';
+    } else if (in[i] == '%' && i + 2 < in.size() && hexValue(in[i + 1]) >= 0 && hexValue(in[i + 2]) >= 0) {
+      out += static_cast<char>(hexValue(in[i + 1]) * 16 + hexValue(in[i + 2]));
+      i += 2;
+    } else {
+      out += in[i];
+    }
+  }
+  return out;
+}
+
+}  // namespace
+
+Credentials parseCredentials(const std::string& text) {
+  Credentials out;
+  for (const auto& [key, value] : keyValues(text)) {
+    if (key == "refresh_token") {
+      out.refreshToken = value;
     } else if (key == "account") {
       out.account = value;
     }
@@ -90,25 +173,104 @@ Credentials parseCredentials(const std::string& text) {
 }
 
 std::string serializeCredentials(const Credentials& creds) {
-  return "token=" + creds.deviceToken + "\naccount=" + creds.account + "\n";
+  return "refresh_token=" + creds.refreshToken + "\naccount=" + creds.account + "\n";
 }
 
-std::string parseBridgeHost(const std::string& text) {
-  for (const std::string& raw : lines(text)) {
-    const std::string line = trim(raw);
-    if (line.empty() || line[0] == '#') continue;
-    const size_t eq = line.find('=');
-    if (eq == std::string::npos || trim(line.substr(0, eq)) != "host") continue;
-    const std::string value = trim(line.substr(eq + 1));
-    if (value.empty() || value.size() > 253) return std::string();
-    for (const char c : value) {
-      const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '-' ||
-                      c == '.' || c == ':';
-      if (!ok) return std::string();
+Client parseClient(const std::string& text) {
+  Client out;
+  for (const auto& [key, value] : keyValues(text)) {
+    if (key == "client_id") {
+      out.id = value;
+    } else if (key == "client_secret") {
+      out.secret = value;
     }
-    return value;
   }
-  return std::string();
+  return out;
+}
+
+std::string pkceChallenge(const std::string& verifier) {
+  uint8_t digest[32];
+  devreport::sha256(reinterpret_cast<const uint8_t*>(verifier.data()), verifier.size(), digest);
+  return base64Url(digest, sizeof(digest));
+}
+
+std::string authUrl(const std::string& clientId, const std::string& challenge, const std::string& state) {
+  return std::string("https://accounts.google.com/o/oauth2/v2/auth?client_id=") + formEncode(clientId) +
+         "&redirect_uri=" + formEncode(kRedirectUri) + "&response_type=code&scope=" + formEncode(kScopes) +
+         // offline + consent is what makes Google hand out a refresh token on
+         // every sign-in, not only the first one for this client.
+         "&access_type=offline&prompt=consent&code_challenge=" + formEncode(challenge) +
+         "&code_challenge_method=S256&state=" + formEncode(state);
+}
+
+Pasted parsePasted(const std::string& pasted, const std::string& expectedState) {
+  Pasted out;
+  std::string text = trim(pasted);
+  const size_t question = text.find('?');
+  if (question != std::string::npos) text = text.substr(question + 1);
+  const size_t hash = text.find('#');
+  if (hash != std::string::npos) text = text.substr(0, hash);
+
+  std::string code;
+  std::string state;
+  std::string error;
+  std::string scope;
+  size_t start = 0;
+  while (start <= text.size()) {
+    size_t end = text.find('&', start);
+    if (end == std::string::npos) end = text.size();
+    const std::string pair = text.substr(start, end - start);
+    start = end + 1;
+    const size_t eq = pair.find('=');
+    if (eq == std::string::npos) continue;
+    const std::string key = trim(pair.substr(0, eq));
+    const std::string value = urlDecode(trim(pair.substr(eq + 1)));
+    if (key == "code") code = value;
+    if (key == "state") state = value;
+    if (key == "error") error = value;
+    if (key == "scope") scope = value;
+  }
+
+  if (!error.empty()) {
+    out.message = error == "access_denied" ? "Google was told no, so nothing changed. Start again to sign in."
+                                           : "Google did not sign you in (" + error + "). Start again.";
+    return out;
+  }
+  if (code.empty()) {
+    out.message = "That address has no code in it. Copy the whole address of the page Google sent you to.";
+    return out;
+  }
+  if (state != expectedState) {
+    out.message = "That address is from a different sign-in. Open the link on this page and try again.";
+    return out;
+  }
+  // Google's consent screen lets a person untick a permission. Without Tasks
+  // the reader would sign in and then fail every sync.
+  if (!scope.empty() && scope.find("https://www.googleapis.com/auth/tasks") == std::string::npos) {
+    out.message = "Google Tasks was not ticked. Start again and leave its box ticked.";
+    return out;
+  }
+  out.code = code;
+  return out;
+}
+
+std::string idTokenEmail(const std::string& idToken) {
+  const size_t first = idToken.find('.');
+  if (first == std::string::npos) return std::string();
+  const size_t second = idToken.find('.', first + 1);
+  if (second == std::string::npos) return std::string();
+  const std::string payload = fromBase64Url(idToken.substr(first + 1, second - first - 1));
+  // The claim's name in quotes, so "email_verified" is not taken for it.
+  size_t at = payload.find("\"email\"");
+  if (at == std::string::npos) return std::string();
+  at = payload.find(':', at + 7);
+  if (at == std::string::npos) return std::string();
+  at = payload.find('"', at + 1);
+  if (at == std::string::npos) return std::string();
+  const size_t end = payload.find('"', at + 1);
+  if (end == std::string::npos) return std::string();
+  const std::string email = payload.substr(at + 1, end - at - 1);
+  return email.find('\\') == std::string::npos ? email : std::string();
 }
 
 std::string serializeTasks(const std::vector<Task>& tasks) {

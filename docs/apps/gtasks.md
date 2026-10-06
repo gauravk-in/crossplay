@@ -5,22 +5,54 @@ ticks go up to Google on the next sync.
 
 ## Signing in
 
-1. Open **Apps > TASKS** and tap **GET A CODE**. The reader joins the saved
-   Wi-Fi network (or opens the Wi-Fi picker) and shows a QR code and an
-   eight-character code.
-2. Scan the QR with your phone, or open the address under the code and type
-   it. Sign in with Google and allow access to Google Tasks.
-3. The reader shows the Google address it got and asks **IS THIS YOU?**. Tap
-   **YES, USE IT** and your list arrives.
+Sign-in happens on the reader itself. There is no server in between: your
+Google key is kept in `auth.cfg` on the card and goes only to Google.
 
-Codes last five minutes and work once. Only type a code shown on a reader in
-your own hands.
+1. Open **Apps > TASKS** and tap **START SIGN-IN**. The reader joins the saved
+   Wi-Fi network (or opens the Wi-Fi picker) and shows a QR code and an
+   address.
+2. Scan the QR with a phone on the same Wi-Fi. The page that opens is served
+   by the reader. Tap **Sign in with Google**, sign in, and allow access to
+   Google Tasks.
+3. Google then sends the phone to a `127.0.0.1` page that will not load. That
+   is expected. Copy the whole address from the address bar, go back to the
+   reader's page, paste it and tap **Send to the reader**.
+4. The page says who you signed in as, and the reader fetches your list.
 
 Google's own device sign-in (a code typed at google.com/device) does not allow
-the Tasks permission, which is why the code goes to the sign-in service
-instead. The service keeps the Google grant; the reader keeps only a token for
-the service and asks it for an hour's access each time it syncs. Task data goes
-straight between the reader and Google.
+the Tasks permission, which is why the reader runs the installed-app sign-in
+instead (PKCE, with a loopback redirect the phone cannot load). The pasted
+address only works with the sign-in the reader started, and only once.
+
+### The Google client
+
+The reader signs in as a Google Cloud OAuth client that you make once:
+
+1. In the Google Cloud console, create a project and enable the
+   **Google Tasks API**.
+2. Under **Google Auth Platform**, set up the consent screen (External), and
+   add the scopes `openid`, `email` and `.../auth/tasks`.
+3. Create an OAuth client of type **Desktop app**.
+4. Put its ID and secret on the card in `/.crosspoint/gtasks/client.cfg`:
+
+   ```
+   client_id=1234-abc.apps.googleusercontent.com
+   client_secret=GOCSPX-...
+   ```
+
+   Or build them in with `-DGTASKS_CLIENT_ID='"..."'` and
+   `-DGTASKS_CLIENT_SECRET='"..."'` in `platformio.local.ini`. The card file
+   wins when both are there.
+
+Google treats a desktop client's secret as public, so it is not what keeps an
+account safe; the refresh token on each card is. Do not commit either to the
+repository all the same.
+
+While the consent screen is in **Testing**, only the test users you list can
+sign in, and Google expires their sign-in after seven days, so the reader asks
+again every week. Publishing the app to **In production** removes both limits.
+Google shows an "unverified app" warning for the Tasks scope until the app is
+verified, which a personal client can click through.
 
 ## Using it
 
@@ -36,8 +68,8 @@ straight between the reader and Google.
   sleeps as usual.
 - **The gear** opens settings: how often to check on the charger (every 1, 2,
   5, 10, 15, 30 or 60 minutes, or off), and **SIGN OUT**, which removes the
-  token and the list from the card, and tells the service to drop the Google
-  grant when Wi-Fi is up.
+  token and the list from the card, and tells Google to revoke the grant when
+  Wi-Fi is up.
 - The side keys page a long list.
 
 Completed tasks are not shown. Subtasks are indented under their parent.
@@ -48,19 +80,14 @@ Completed tasks are not shown. Subtasks are indented under their parent.
 
 | File           | What                                                               |
 | -------------- | ------------------------------------------------------------------ |
-| `auth.cfg`     | the sign-in service's token for this reader, and the address       |
+| `auth.cfg`     | Google's refresh token for this reader, and the account's address  |
+| `client.cfg`   | the Google OAuth client (see above), unless it is built in         |
 | `tasks.tsv`    | the list as last synced, plus ticks not yet sent                   |
 | `settings.cfg` | `poll_minutes=N`                                                   |
 | `meta.cfg`     | the list's title and when it last synced                           |
-| `bridge.cfg`   | optional: `host=` of a sign-in service other than the built-in one |
 | `.roots.pem`   | optional: CA roots that override the built-in bundle               |
 
-The connections to Google and to the sign-in service are verified TLS against
-the roots the other bridges use (GTS Root R1 and R4 are in it).
-
-## Running the sign-in service
-
-`server/tasks-bridge/README.md`: a Google Cloud web OAuth client with the
-Tasks API enabled, HTTPS in front of the container, and an allowlist of the
-Google addresses that may sign in. The reader's built-in host is
-`GTASKS_BRIDGE_HOST` in `src/apps_local/gtasks/GTasksApi.cpp`.
+The connections to Google are verified TLS against the roots the other bridges
+use (GTS Root R1 and R4 are in it). The sign-in page the reader serves on your
+Wi-Fi is plain HTTP and only up while the QR is on the screen; it hands out the
+consent address and takes one paste, and serves nothing from the card.

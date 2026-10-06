@@ -12,12 +12,7 @@ namespace {
 constexpr const char* kTag = "GTASKS";
 constexpr const char* kRoots = "/.crosspoint/gtasks/.roots.pem";
 
-#ifndef GTASKS_BRIDGE_HOST
-// Where server/tasks-bridge is deployed. /.crosspoint/gtasks/bridge.cfg
-// overrides it without a reflash.
-#define GTASKS_BRIDGE_HOST "tasks.gauravk.in"
-#endif
-
+constexpr bridge::Endpoint kOauth = {"oauth2.googleapis.com", kTag, "GTASKS_OAUTH_URL", kRoots};
 constexpr bridge::Endpoint kTasks = {"tasks.googleapis.com", kTag, "GTASKS_API_URL", kRoots};
 
 // Most a list is read to. 100 per page is Google's ceiling; five pages is more
@@ -48,107 +43,90 @@ std::string googleSays(const std::string& response) {
 
 }  // namespace
 
-void Api::setBridgeHost(const std::string& host) { bridgeHost_ = host; }
+namespace {
 
-std::string Api::pairAddress() const {
-  return (bridgeHost_.empty() ? std::string(GTASKS_BRIDGE_HOST) : bridgeHost_) + "/pair";
-}
+constexpr const char* kForm = "application/x-www-form-urlencoded";
 
-std::string Api::pairUrl(const std::string& code) const { return "https://" + pairAddress() + "#" + code; }
-
-int Api::callBridge(const char* method, const std::string& path, const std::string& token, const std::string& body,
-                    std::string& response, std::string& message) const {
-  const std::string host = bridgeHost_.empty() ? std::string(GTASKS_BRIDGE_HOST) : bridgeHost_;
-  const bridge::Endpoint endpoint = {host.c_str(), kTag, "GTASKS_BRIDGE_URL", kRoots};
-  return call(endpoint, method, path, token, body, body.empty() ? nullptr : "application/json", response, message);
-}
-
-bool Api::pairStart(PairStart& out, std::string& message) {
-  std::string response;
-  const int status = callBridge("POST", "/api/pair/start", "", "", response, message);
-  if (status == 0) return false;
-  if (status != 200) {
-    if (!bridge::takeServerError(response, message)) message = "The sign-in service refused. Try again later.";
-    return false;
-  }
+// OAuth's own error codes for "this grant is no good any more", as opposed to
+// a network or server failure that is worth retrying on the next sync.
+bool grantRefused(const std::string& response) {
   JsonDocument doc;
-  if (deserializeJson(doc, response) != DeserializationError::Ok || !doc["code"].is<const char*>() ||
-      !doc["pollToken"].is<const char*>()) {
-    message = "The sign-in service answered something unexpected.";
+  if (deserializeJson(doc, response) != DeserializationError::Ok || !doc["error"].is<const char*>()) return false;
+  const std::string error = doc["error"].as<const char*>();
+  return error == "invalid_grant" || error == "invalid_client" || error == "unauthorized_client";
+}
+
+}  // namespace
+
+bool Api::exchange(const Client& client, const std::string& code, const std::string& verifier, Credentials& out,
+                   std::string& message) {
+  const std::string body = "code=" + formEncode(code) + "&client_id=" + formEncode(client.id) +
+                           "&client_secret=" + formEncode(client.secret) + "&redirect_uri=" + formEncode(kRedirectUri) +
+                           "&grant_type=authorization_code&code_verifier=" + formEncode(verifier);
+  std::string response;
+  const int status = call(kOauth, "POST", "/token", "", body, kForm, response, message);
+  if (status == 0) return false;
+  JsonDocument doc;
+  if (status != 200 || deserializeJson(doc, response) != DeserializationError::Ok) {
+    LOG_ERR(kTag, "exchange: HTTP %d", status);
+    message = grantRefused(response) ? "Google did not accept that address. It works once, and only for a few "
+                                       "minutes: sign in again on the phone."
+                                     : googleSays(response);
+    if (message.empty()) message = "Google would not finish the sign-in. Try again.";
     return false;
   }
-  out.code = doc["code"].as<const char*>();
-  out.pollToken = doc["pollToken"].as<const char*>();
-  // On serial deliberately: "read me the code" is the first support question.
-  LOG_INF(kTag, "pairing code %s", out.code.c_str());
+  if (!doc["refresh_token"].is<const char*>()) {
+    message =
+        "Google signed in but kept the long-lived key back. Remove the reader at "
+        "myaccount.google.com/permissions and sign in again.";
+    return false;
+  }
+  out.refreshToken = doc["refresh_token"].as<const char*>();
+  out.account = idTokenEmail(doc["id_token"] | "");
+  LOG_INF(kTag, "signed in as %s", out.account.empty() ? "(no address)" : out.account.c_str());
   return true;
 }
 
-int Api::pairPoll(const std::string& pollToken, std::string& account, std::string& token, std::string& message) {
-  std::string response;
-  const int status = callBridge("GET", "/api/pair/poll?pollToken=" + formEncode(pollToken), "", "", response, message);
-  if (status == 0) return -1;
-  if (status != 200) {
-    if (!bridge::takeServerError(response, message)) message = "That code expired. Ask for a fresh one.";
-    return -1;
-  }
-  JsonDocument doc;
-  if (deserializeJson(doc, response) != DeserializationError::Ok) {
-    message = "The sign-in service answered something unexpected.";
-    return -1;
-  }
-  if (doc["pending"] | false) return 0;
-  if (!doc["deviceToken"].is<const char*>()) {
-    message = "The sign-in service answered something unexpected.";
-    return -1;
-  }
-  account = doc["email"] | "";
-  token = doc["deviceToken"].as<const char*>();
-  return 1;
-}
-
-void Api::pairAbandon(const std::string& pollToken, const std::string& deviceToken) {
-  JsonDocument doc;
-  if (!pollToken.empty()) doc["pollToken"] = pollToken;
-  if (!deviceToken.empty()) doc["deviceToken"] = deviceToken;
-  std::string body;
-  serializeJson(doc, body);
+void Api::revoke(const std::string& refreshToken) {
+  if (refreshToken.empty()) return;
   std::string response;
   std::string message;
-  callBridge("POST", "/api/pair/abandon", "", body, response, message);
+  const int status = call(kOauth, "POST", "/revoke", "", "token=" + formEncode(refreshToken), kForm, response, message);
+  LOG_INF(kTag, "revoke: HTTP %d", status);
 }
 
-void Api::unpair(const std::string& deviceToken) {
-  std::string response;
-  std::string message;
-  callBridge("POST", "/api/unpair", deviceToken, "{}", response, message);
-}
-
-bool Api::refresh(const Credentials& creds, const uint32_t nowMs, AccessToken& out, std::string& message) {
+bool Api::refresh(const Client& client, const Credentials& creds, const uint32_t nowMs, AccessToken& out,
+                  std::string& message) {
   signedOut = false;
   if (!creds.complete()) {
     signedOut = true;
     message = "This reader is not signed in to Google.";
     return false;
   }
-  std::string response;
-  const int status = callBridge("POST", "/api/token", creds.deviceToken, "{}", response, message);
-  if (status == 0) return false;
-  if (status == 401) {
-    signedOut = true;
-    if (!bridge::takeServerError(response, message)) message = "This reader is not signed in anymore. Sign in again.";
-    LOG_ERR(kTag, "token refused by the sign-in service");
+  if (!client.complete()) {
+    message = "No Google client is set up on this card. See docs/apps/gtasks.md.";
     return false;
   }
+  const std::string body = "client_id=" + formEncode(client.id) + "&client_secret=" + formEncode(client.secret) +
+                           "&refresh_token=" + formEncode(creds.refreshToken) + "&grant_type=refresh_token";
+  std::string response;
+  const int status = call(kOauth, "POST", "/token", "", body, kForm, response, message);
+  if (status == 0) return false;
   JsonDocument doc;
   if (status != 200 || deserializeJson(doc, response) != DeserializationError::Ok ||
-      !doc["accessToken"].is<const char*>()) {
-    if (!bridge::takeServerError(response, message)) message = "The sign-in service did not hand out a key.";
+      !doc["access_token"].is<const char*>()) {
     LOG_ERR(kTag, "token: HTTP %d", status);
+    if (grantRefused(response)) {
+      signedOut = true;
+      message = "Google signed this reader out. Sign in again.";
+      return false;
+    }
+    message = googleSays(response);
+    if (message.empty()) message = "Google did not hand out a key.";
     return false;
   }
-  out.value = doc["accessToken"].as<const char*>();
-  const uint32_t lifetime = doc["expiresIn"] | 3600u;
+  out.value = doc["access_token"].as<const char*>();
+  const uint32_t lifetime = doc["expires_in"] | 3600u;
   out.goodUntilMs = nowMs + (lifetime > 120 ? lifetime - 60 : lifetime / 2) * 1000u;
   return true;
 }

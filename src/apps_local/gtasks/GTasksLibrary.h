@@ -2,8 +2,9 @@
 
 // Google Tasks on the card, under /.crosspoint/gtasks/:
 //
-//   auth.cfg      the sign-in service's device token and the Google address
-//   bridge.cfg    optional: host=<sign-in service>, overriding the built-in one
+//   auth.cfg      the Google refresh token and address (the reader writes it)
+//   client.cfg    the Google Cloud desktop client to sign in as, unless the
+//                 build carries one (GTASKS_CLIENT_ID / GTASKS_CLIENT_SECRET)
 //   tasks.tsv     the list as last synced, plus ticks not yet sent
 //   settings.cfg  how often to poll on the charger
 //   meta.cfg      the list's title and when it last synced
@@ -29,8 +30,8 @@ class Library {
  public:
   Credentials loadCredentials() const;
   bool saveCredentials(const Credentials& creds) const;
-  // "" when bridge.cfg is absent or unusable.
-  std::string loadBridgeHost() const;
+  // client.cfg's, else the one built in, else an incomplete Client.
+  Client loadClient() const;
   // Forgets the account: the token, the cached list and its title. Settings
   // stay, because they describe this reader rather than the account.
   void signOut() const;
