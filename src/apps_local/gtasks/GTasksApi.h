@@ -4,8 +4,7 @@
 //
 // Sign-in: trade the code a phone brought back for a refresh token, and
 // revoke it on sign-out. Every sync: trade the refresh token for an access
-// token, read the default list's name, read its open tasks, mark one
-// completed. Nothing goes anywhere but Google.
+// token, read the lists, read each one's open tasks, mark one completed. Nothing goes anywhere but Google.
 //
 // Transport is bridge::request (verified TLS on the device, curl in the
 // simulator), not HttpDownloader, which calls setInsecure() -- and a request
@@ -48,16 +47,17 @@ class Api {
 
   bool refresh(const Client& client, const Credentials& creds, uint32_t nowMs, AccessToken& out, std::string& message);
 
-  // The default list's title, for the header. "" when Google did not say.
-  bool listTitle(const AccessToken& token, std::string& title, std::string& message);
+  // Every list on the account, in Google's order. Lists whose id fails
+  // safeId() are left out.
+  bool lists(const AccessToken& token, std::vector<TaskList>& out, std::string& message);
 
-  // Every OPEN task in the default list, in no particular order (sort with
+  // Every OPEN task in a list, in no particular order (sort with
   // sortForDisplay). Pages through Google's 100-per-response limit.
-  bool openTasks(const AccessToken& token, std::vector<Task>& out, std::string& message);
+  bool openTasks(const AccessToken& token, const std::string& listId, std::vector<Task>& out, std::string& message);
 
   // Marks a task completed. A task Google no longer has (deleted on the phone)
   // counts as done: there is nothing left to complete.
-  bool complete(const AccessToken& token, const std::string& id, std::string& message);
+  bool complete(const AccessToken& token, const std::string& listId, const std::string& id, std::string& message);
 
   // True when the last call failed because the access token was refused, so
   // the caller can refresh once and retry.

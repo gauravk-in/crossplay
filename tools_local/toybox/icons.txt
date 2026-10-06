@@ -470,3 +470,5 @@ wordle_delete = delete
 # own screen in miniature, and no other row on the shelf is a list of lines.
 # Spliced in by hand, per the warning at the top of this file.
 gtasks = list-todo
+# The list switcher in its header: three lines, the menu everyone knows.
+gtasks_menu = menu

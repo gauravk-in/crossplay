@@ -2,6 +2,7 @@
 
 #include <cstdio>
 #include <string>
+#include <vector>
 
 #include "../ui/ToyboxText.h"
 
@@ -33,7 +34,7 @@ int16_t pageWidth(const fui::DeviceContext& device) { return static_cast<int16_t
 // Header band, rule, and the page margin. `status` is paper on the black band:
 // a label left at the default colour is black on black and simply not there.
 void chrome(toybox::Screen& screen, const char* title, const char* status = nullptr,
-            const freeink::Icon* trailing = nullptr) {
+            const freeink::Icon* trailing = nullptr, const freeink::Icon* leading = nullptr) {
   fui::HeaderProps header;
   header.title = title;
   header.rightLabel = status;
@@ -49,10 +50,21 @@ void chrome(toybox::Screen& screen, const char* title, const char* status = null
     header.trailingAction = ActionSettings;
     header.trailingStyles = toybox::rowStyles();
   }
-  // The band holds a list's name, which is somebody else's words: fitted here
-  // because the Toybox cuts carry no ellipsis and an overflow just stops.
+  if (leading != nullptr) {
+    header.leadingIcon = fui::bitmapFromIcon(*leading);
+    header.leadingAction = ActionOpenLists;
+    header.leadingStyles = toybox::rowStyles();
+  }
+  // The band's own rule tucks the title against the icon's ink, which assumes
+  // an invisible button. This one is a paper tile, so clear its edge instead.
   fui::TextStyle titleStyle = screen.theme().titleText;
   const fui::Rect band = toybox::headerBandRect(screen);
+  if (leading != nullptr) {
+    const int16_t btn = static_cast<int16_t>(band.height - 8);
+    header.leftReserve = static_cast<int16_t>((btn - header.leadingIcon.width) / 2 + 8);
+  }
+  // The band holds a list's name, which is somebody else's words: fitted here
+  // because the Toybox cuts carry no ellipsis and an overflow just stops.
   const std::string fitted =
       toybox::fittedTitle(screen.target(), title, toybox::headerTitleWidth(screen, band, header), titleStyle);
   header.title = fitted.c_str();
@@ -68,11 +80,14 @@ fui::Rect footerBand(const fui::DeviceContext& device) {
 
 // The page between the chrome and the footer, less the page label's strip when
 // there is one, so a paged list never draws a row under its own page number.
-fui::Rect listBand(const fui::DrawTarget& target, const fui::DeviceContext& device, const bool paged) {
+fui::Rect listBand(const fui::DrawTarget& target, const fui::DeviceContext& device, const bool paged,
+                   const bool asleep = false) {
   const fui::Rect footer = footerBand(device);
   const int16_t label = paged ? static_cast<int16_t>(target.lineHeight(toybox::kTileFont) + toybox::kGutter) : 0;
+  const int16_t bottom =
+      asleep ? static_cast<int16_t>(device.height - toybox::kMargin + toybox::kGutter * 2) : footer.y;
   return fui::makeRect(toybox::kMargin, kBodyTop, footer.width,
-                       static_cast<int16_t>(footer.y - toybox::kGutter * 2 - label - kBodyTop));
+                       static_cast<int16_t>(bottom - toybox::kGutter * 2 - label - kBodyTop));
 }
 
 int16_t rowPitch(const fui::DrawTarget& target) {
@@ -152,13 +167,14 @@ void drawRow(toybox::Screen& screen, const fui::Rect& row, const Row& r) {
 
 // --- The list --------------------------------------------------------------
 
-int listCapacity(const fui::DrawTarget& target, const fui::DeviceContext& device, const bool paged) {
-  const int capacity = listBand(target, device, paged).height / rowPitch(target);
+int listCapacity(const fui::DrawTarget& target, const fui::DeviceContext& device, const bool paged, const bool asleep) {
+  const int capacity = listBand(target, device, paged, asleep).height / rowPitch(target);
   return capacity < 1 ? 1 : capacity;
 }
 
 void buildList(toybox::Screen& screen, const ListModel& model) {
-  chrome(screen, model.title, model.status, model.settingsIcon);
+  chrome(screen, model.title, model.status, model.asleep ? nullptr : model.settingsIcon,
+         model.asleep ? nullptr : model.menuIcon);
   const fui::DeviceContext& device = screen.device();
   const fui::Rect footer = footerBand(device);
   const bool paged = model.pageLabel != nullptr;
@@ -166,7 +182,9 @@ void buildList(toybox::Screen& screen, const ListModel& model) {
   // REFRESH keeps the left edge and most of the bar, the fork-wide home of the
   // primary action. The page arrows appear only when there is a second page,
   // and they take the right, where a thumb pages the shelf too.
-  if (paged) {
+  if (model.asleep) {
+    // Nothing to press on a sleeping panel.
+  } else if (paged) {
     const int16_t arrow = static_cast<int16_t>(kFooterHeight + toybox::kGutter);
     const int16_t refreshW = static_cast<int16_t>(footer.width - 2 * (arrow + toybox::kGutter));
     footerButton(screen, fui::makeRect(footer.x, footer.y, refreshW, footer.height), "REFRESH", ActionRefresh, false);
@@ -180,7 +198,7 @@ void buildList(toybox::Screen& screen, const ListModel& model) {
     footerButton(screen, footer, "REFRESH", ActionRefresh, false);
   }
 
-  const fui::Rect band = listBand(screen.target(), device, paged);
+  const fui::Rect band = listBand(screen.target(), device, paged, model.asleep);
   if (model.count <= 0 || model.rows == nullptr) {
     const int16_t headlineH = screen.target().lineHeight(toybox::kDisplayFont);
     const int16_t bodyH = screen.target().lineHeight(toybox::kUiFont);
@@ -199,7 +217,7 @@ void buildList(toybox::Screen& screen, const ListModel& model) {
     if (row.y + row.height > band.y + band.height) break;
     drawRow(screen, row, model.rows[i]);
     if (i + 1 < model.count) separator(screen, row);
-    rowHit(screen, row, model.firstIndex + i);
+    if (!model.asleep) rowHit(screen, row, model.firstIndex + i);
   }
 
   if (paged) {
@@ -211,6 +229,27 @@ void buildList(toybox::Screen& screen, const ListModel& model) {
   }
 }
 
+// --- The list switcher -----------------------------------------------------
+
+void buildLists(toybox::Screen& screen, const ListsModel& model) {
+  chrome(screen, "LISTS");
+  const fui::DeviceContext& device = screen.device();
+  footerButton(screen, footerBand(device), "BACK", ActionCloseLists, false);
+
+  std::vector<fui::ListItem> rows(static_cast<size_t>(model.count > 0 ? model.count : 0));
+  for (int i = 0; i < model.count; ++i) {
+    rows[static_cast<size_t>(i)].label = model.lists[i].title;
+    rows[static_cast<size_t>(i)].value = model.lists[i].detail;
+    rows[static_cast<size_t>(i)].actionValue = static_cast<int16_t>(i);
+  }
+  fui::ListProps list;
+  list.items = rows.empty() ? nullptr : rows.data();
+  list.count = static_cast<uint16_t>(rows.size());
+  list.selectedIndex = static_cast<int16_t>(model.current);
+  list.action = ActionPickList;
+  screen.list(list);
+}
+
 // --- Settings --------------------------------------------------------------
 
 void buildSettings(toybox::Screen& screen, const SettingsModel& model) {
@@ -220,15 +259,18 @@ void buildSettings(toybox::Screen& screen, const SettingsModel& model) {
 
   // A list, not a stack of settingRows: Screen::list() themes the rows the way
   // every other settings screen in the fork is themed.
-  fui::ListItem rows[2] = {};
-  rows[0].label = "SYNC ON CHARGER";
+  fui::ListItem rows[3] = {};
+  rows[0].label = "AUTO SYNC";
   rows[0].value = model.pollLabel;
   rows[0].actionValue = static_cast<int16_t>(SettingRow::Poll);
   int count = 1;
   if (model.signedIn) {
-    rows[1].label = "SIGN OUT";
-    rows[1].actionValue = static_cast<int16_t>(SettingRow::SignOut);
-    count = 2;
+    rows[1].label = "SLEEP SCREEN";
+    rows[1].value = model.sleepLabel;
+    rows[1].actionValue = static_cast<int16_t>(SettingRow::Sleep);
+    rows[2].label = "SIGN OUT";
+    rows[2].actionValue = static_cast<int16_t>(SettingRow::SignOut);
+    count = 3;
   }
   fui::ListProps list;
   list.items = rows;
@@ -240,12 +282,13 @@ void buildSettings(toybox::Screen& screen, const SettingsModel& model) {
   // What the first row means, under the rows, because "on charger" is the
   // whole condition and nothing else on the screen says so.
   const fui::Rect footer = footerBand(device);
-  const fui::TextStyle note = plain(toybox::kUiFont, fui::TextAlign::Left, fui::Color::DarkGray, 4);
-  const int16_t h = static_cast<int16_t>(screen.target().lineHeight(note.font) * 4);
+  const fui::TextStyle note = plain(toybox::kUiFont, fui::TextAlign::Left, fui::Color::DarkGray, 5);
+  const int16_t h = static_cast<int16_t>(screen.target().lineHeight(note.font) * 5);
   const int16_t width = pageWidth(device);
-  const std::string text = toybox::fitLines(
-      screen.target(), "While this app is open on the charger, it checks Google this often. REFRESH syncs any time.",
-      width, 4, note);
+  const std::string text = toybox::fitLines(screen.target(),
+                                            "Auto sync is how often to check Google while this app is open on the "
+                                            "charger. Sleep screen shows this list while the reader is off.",
+                                            width, 5, note);
   screen.target().text(
       fui::makeRect(toybox::kMargin, static_cast<int16_t>(footer.y - toybox::kGutter * 2 - h), width, h), text.c_str(),
       note);

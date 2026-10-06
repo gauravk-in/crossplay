@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <ctime>
 
+#include "../../CrossPointSettings.h"
 #include "../../DevMode.h"
 #include "../../SilentRestart.h"
 #include "../../WifiCredentialStore.h"
@@ -70,13 +71,15 @@ void GTasksActivity::onEnter() {
   toybox::ensureFonts(renderer);
   settings_ = library_.loadSettings();
   meta_ = library_.loadMeta();
-  tasks_ = library_.loadTasks();
+  lists_ = library_.loadLists();
+  if (meta_.currentList.empty() && !lists_.empty()) meta_.currentList = lists_.front().id;
+  tasks_ = library_.loadTasks(meta_.currentList);
   wasCharging_ = gpio.isUsbConnected();
   client_ = library_.loadClient();
   reloadCredentials();
-  LOG_INF(kTag, "opened: %d tasks, %d to send, %s, poll %u min", static_cast<int>(tasks_.size()),
-          gtasks::pendingCount(tasks_), creds_.complete() ? "signed in" : "not signed in",
-          static_cast<unsigned>(settings_.pollMinutes));
+  LOG_INF(kTag, "opened: %d lists, %d tasks open here, %d to send, %s, poll %u min", static_cast<int>(lists_.size()),
+          static_cast<int>(tasks_.size()), gtasks::pendingCount(tasks_),
+          creds_.complete() ? "signed in" : "not signed in", static_cast<unsigned>(settings_.pollMinutes));
   requestUpdate();
 }
 
@@ -228,73 +231,96 @@ bool GTasksActivity::sync(std::string& message, bool& changed) {
   changed = false;
   if (!ensureToken(message)) return false;
 
-  const std::string before = gtasks::serializeTasks(tasks_);
-  const std::string titleBefore = meta_.listTitle;
-  // Worked on as a copy and swapped in under the render lock, because the
-  // render task reads tasks_ and a charger poll can overlap a repaint.
-  std::vector<gtasks::Task> work = tasks_;
-  const auto commit = [this, &work]() {
-    RenderLock lock(*this);
-    tasks_ = work;
-  };
-
-  // Ticks first, so the list read afterwards already leaves them out. One
-  // refresh-and-retry per sync if Google refuses the key mid-way; a second
+  // One refresh-and-retry per sync if Google refuses the key mid-way; a second
   // refusal is a real one.
   bool retried = false;
-  int sent = 0;
-  for (gtasks::Task& t : work) {
-    if (!t.pending) continue;
-    std::string why;
-    bool ok = api_.complete(token_, t.id, why);
-    if (!ok && api_.tokenRefused && !retried) {
-      retried = true;
-      token_ = gtasks::AccessToken{};
-      if (!ensureToken(message)) return false;
-      ok = api_.complete(token_, t.id, why);
-    }
-    if (!ok) {
-      // Stays pending; the list below still merges, so new tasks arrive even
-      // when one tick will not go up.
-      LOG_ERR(kTag, "tick did not go up: %s", why.c_str());
-      continue;
-    }
-    t.pending = false;
-    t.id.clear();  // completed: gone from the list Google is about to send
-    ++sent;
-  }
-  if (sent > 0) {
-    work.erase(std::remove_if(work.begin(), work.end(), [](const gtasks::Task& t) { return t.id.empty(); }),
-               work.end());
-    library_.saveTasks(work);
-    commit();
-    LOG_INF(kTag, "sent %d tick%s", sent, sent == 1 ? "" : "s");
-  }
-
-  std::vector<gtasks::Task> fresh;
-  bool ok = api_.openTasks(token_, fresh, message);
-  if (!ok && api_.tokenRefused && !retried) {
+  const auto retry = [this, &retried, &message]() {
+    if (!api_.tokenRefused || retried) return false;
+    retried = true;
     token_ = gtasks::AccessToken{};
-    if (!ensureToken(message)) return false;
-    ok = api_.openTasks(token_, fresh, message);
-  }
+    return ensureToken(message);
+  };
+
+  std::vector<gtasks::TaskList> fresh;
+  bool ok = api_.lists(token_, fresh, message);
+  if (!ok && retry()) ok = api_.lists(token_, fresh, message);
   if (!ok) return false;
 
-  std::string title;
-  std::string ignored;
-  if (api_.listTitle(token_, title, ignored) && !title.empty()) {
-    RenderLock lock(*this);
-    meta_.listTitle = title;
+  const std::string listsBefore = gtasks::serializeLists(lists_);
+  const std::string tasksBefore = gtasks::serializeTasks(tasks_);
+  std::string current = meta_.currentList;
+  bool currentStillThere = false;
+  for (const gtasks::TaskList& l : fresh) currentStillThere = currentStillThere || l.id == current;
+  if (!currentStillThere) current = fresh.empty() ? std::string() : fresh.front().id;
+
+  // A list Google no longer has takes its cache with it, and any tick still on
+  // it: there is nothing left to send it to.
+  for (const gtasks::TaskList& old : lists_) {
+    bool kept = false;
+    for (const gtasks::TaskList& l : fresh) kept = kept || l.id == old.id;
+    if (!kept) library_.removeTasks(old.id);
   }
 
-  work = gtasks::merge(work, fresh);
-  library_.saveTasks(work);
-  commit();
+  // One list at a time, so only one is ever held beside the open one. The open
+  // list is worked on as a copy and swapped in under the render lock, because
+  // the render task reads tasks_ and a charger poll can overlap a repaint.
+  int sent = 0;
+  for (gtasks::TaskList& list : fresh) {
+    std::vector<gtasks::Task> work = list.id == meta_.currentList ? tasks_ : library_.loadTasks(list.id);
+
+    // Ticks first, so the list read afterwards already leaves them out.
+    bool sentHere = false;
+    for (gtasks::Task& t : work) {
+      if (!t.pending) continue;
+      std::string why;
+      bool done = api_.complete(token_, list.id, t.id, why);
+      if (!done && retry()) done = api_.complete(token_, list.id, t.id, why);
+      if (!done) {
+        // Stays pending; the list below still merges, so new tasks arrive even
+        // when one tick will not go up.
+        LOG_ERR(kTag, "tick did not go up: %s", why.c_str());
+        continue;
+      }
+      t.pending = false;
+      t.id.clear();  // completed: gone from the list Google is about to send
+      sentHere = true;
+      ++sent;
+    }
+    if (sentHere) {
+      work.erase(std::remove_if(work.begin(), work.end(), [](const gtasks::Task& t) { return t.id.empty(); }),
+                 work.end());
+      library_.saveTasks(list.id, work);
+    }
+
+    std::vector<gtasks::Task> open;
+    ok = api_.openTasks(token_, list.id, open, message);
+    if (!ok && retry()) ok = api_.openTasks(token_, list.id, open, message);
+    if (!ok) return false;
+    work = gtasks::merge(work, open);
+    library_.saveTasks(list.id, work);
+    list.open = static_cast<int>(work.size()) - gtasks::pendingCount(work);
+    if (list.id == current) {
+      RenderLock lock(*this);
+      tasks_ = std::move(work);
+    }
+  }
+  if (sent > 0) LOG_INF(kTag, "sent %d tick%s", sent, sent == 1 ? "" : "s");
+
+  library_.saveLists(fresh);
+  {
+    RenderLock lock(*this);
+    lists_ = std::move(fresh);
+    if (current != meta_.currentList) {
+      page_ = 0;
+      if (current.empty()) tasks_.clear();
+    }
+    meta_.currentList = current;
+  }
   const int64_t now = static_cast<int64_t>(std::time(nullptr));
   meta_.lastSyncAt = now > kClockFloor ? now : 0;
   library_.saveMeta(meta_);
 
-  changed = gtasks::serializeTasks(tasks_) != before || meta_.listTitle != titleBefore;
+  changed = gtasks::serializeTasks(tasks_) != tasksBefore || gtasks::serializeLists(lists_) != listsBefore;
   return true;
 }
 
@@ -482,7 +508,7 @@ void GTasksActivity::toggle(const int index) {
     RenderLock lock(*this);
     t.pending = !t.pending;
   }
-  library_.saveTasks(tasks_);
+  library_.saveTasks(meta_.currentList, tasks_);
   LOG_INF(kTag, "%s a task; %d to send", t.pending ? "ticked" : "unticked", gtasks::pendingCount(tasks_));
   requestUpdate();
 }
@@ -497,6 +523,99 @@ void GTasksActivity::stepPage(const int delta) {
   requestUpdate();
 }
 
+const gtasks::TaskList* GTasksActivity::currentList() const {
+  for (const gtasks::TaskList& l : lists_) {
+    if (l.id == meta_.currentList) return &l;
+  }
+  return nullptr;
+}
+
+void GTasksActivity::pickList(const int index) {
+  if (index < 0 || index >= static_cast<int>(lists_.size())) return;
+  const std::string& id = lists_[static_cast<size_t>(index)].id;
+  std::vector<gtasks::Task> tasks = library_.loadTasks(id);
+  {
+    RenderLock lock(*this);
+    meta_.currentList = id;
+    tasks_ = std::move(tasks);
+    page_ = 0;
+  }
+  library_.saveMeta(meta_);
+  LOG_INF(kTag, "opened list %s: %d tasks", id.c_str(), static_cast<int>(tasks_.size()));
+  show(Phase::List);
+}
+
+// --- The sleep screen ------------------------------------------------------
+
+namespace {
+// What to put back: anything recorded except Tasks itself, else the setting's
+// own default.
+uint8_t modeToRestore(const int previousMode) {
+  if (previousMode >= 0 && previousMode < CrossPointSettings::SLEEP_SCREEN_MODE_COUNT &&
+      previousMode != CrossPointSettings::SLEEP_SCREEN_MODE::TASKS) {
+    return static_cast<uint8_t>(previousMode);
+  }
+  return static_cast<uint8_t>(CrossPointSettings::SLEEP_SCREEN_MODE::DARK);
+}
+}  // namespace
+
+void GTasksActivity::restoreSleepSettings(const gtasks::Asleep& asleep) {
+  // Somebody chose another sleep screen since; that choice stands.
+  if (SETTINGS.sleepScreen != CrossPointSettings::SLEEP_SCREEN_MODE::TASKS) return;
+  SETTINGS.sleepScreen = modeToRestore(asleep.previousMode);
+  if (asleep.previousQuick == 1) {
+    SETTINGS.quickResumeSleepScreen = CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN::QUICK_RESUME_AFTER_TIMEOUT;
+  } else if (asleep.previousQuick == 0) {
+    SETTINGS.quickResumeSleepScreen = CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN::QUICK_RESUME_NEVER;
+  }
+  SETTINGS.saveToFile();
+}
+
+std::string GTasksActivity::asleepTitle() const {
+  if (SETTINGS.sleepScreen != CrossPointSettings::SLEEP_SCREEN_MODE::TASKS) return std::string();
+  gtasks::Asleep asleep;
+  if (!library_.loadAsleep(asleep)) return std::string();
+  for (const gtasks::TaskList& l : lists_) {
+    if (l.id == asleep.listId) return l.title;
+  }
+  return std::string();
+}
+
+void GTasksActivity::toggleAsleep() {
+  if (meta_.currentList.empty()) {
+    showNotice("NOTHING TO SHOW", "Sync once first, so there is a list to put on the sleep screen.");
+    return;
+  }
+  gtasks::Asleep current;
+  const bool hadChoice = library_.loadAsleep(current);
+  const bool isTasks = SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::TASKS;
+  if (isTasks && hadChoice && current.listId == meta_.currentList) {
+    library_.clearAsleep();
+    restoreSleepSettings(current);
+    LOG_INF(kTag, "list off the sleep screen; mode back to %d", SETTINGS.sleepScreen);
+    requestUpdate();
+    return;
+  }
+  gtasks::Asleep choice;
+  choice.listId = meta_.currentList;
+  // Moving from one list to another keeps what the FIRST list replaced, so
+  // turning it off later still puts back the person's own screen.
+  choice.previousMode = isTasks ? (hadChoice ? current.previousMode : -1) : static_cast<int>(SETTINGS.sleepScreen);
+  choice.previousQuick =
+      isTasks ? (hadChoice ? current.previousQuick : -1) : static_cast<int>(SETTINGS.quickResumeSleepScreen);
+  if (!library_.saveAsleep(choice)) {
+    showNotice("NOT SAVED", "The card would not take the change. Nothing was changed.");
+    return;
+  }
+  SETTINGS.sleepScreen = CrossPointSettings::SLEEP_SCREEN_MODE::TASKS;
+  // Quick resume on an idle sleep skips the sleep screen entirely, so the list
+  // would never appear on the ordinary sleep. Notes makes the same trade.
+  SETTINGS.quickResumeSleepScreen = CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN::QUICK_RESUME_NEVER;
+  SETTINGS.saveToFile();
+  LOG_INF(kTag, "list %s on the sleep screen (replaced mode %d)", choice.listId.c_str(), choice.previousMode);
+  requestUpdate();
+}
+
 void GTasksActivity::signOut() {
   // Best effort, and only on a radio that is already up: the token is erased
   // from the card below either way, so this reader can never use it again.
@@ -504,10 +623,13 @@ void GTasksActivity::signOut() {
     paintBusyNow("SIGNING OUT");
     api_.revoke(creds_.refreshToken);
   }
+  gtasks::Asleep asleep;
+  if (library_.loadAsleep(asleep)) restoreSleepSettings(asleep);
   library_.signOut();
   {
     RenderLock lock(*this);
     tasks_.clear();
+    lists_.clear();
     meta_ = gtasks::Meta{};
   }
   token_ = gtasks::AccessToken{};
@@ -536,6 +658,9 @@ void GTasksActivity::loop() {
         break;
       case Phase::SignOutConfirm:
         show(Phase::Settings);
+        break;
+      case Phase::Lists:
+        show(Phase::List);
         break;
       case Phase::Phone:
         stopPhone();
@@ -613,6 +738,15 @@ void GTasksActivity::loop() {
       stopPhone();
       show(Phase::SignIn);
       break;
+    case gtasksui::ActionOpenLists:
+      show(Phase::Lists);
+      break;
+    case gtasksui::ActionPickList:
+      pickList(event.value);
+      break;
+    case gtasksui::ActionCloseLists:
+      show(Phase::List);
+      break;
     case gtasksui::ActionPagePrev:
       stepPage(-1);
       break;
@@ -631,6 +765,8 @@ void GTasksActivity::loop() {
         lastAttemptMs_ = millis();
         everAttempted_ = true;
         requestUpdate();
+      } else if (event.value == static_cast<int>(gtasksui::SettingRow::Sleep)) {
+        toggleAsleep();
       } else if (event.value == static_cast<int>(gtasksui::SettingRow::SignOut)) {
         show(Phase::SignOutConfirm);
       }
@@ -697,9 +833,61 @@ void GTasksActivity::render(RenderLock&&) {
       const std::string poll = gtasks::pollLabel(settings_.pollMinutes);
       gtasksui::SettingsModel model;
       model.pollLabel = poll.c_str();
+      // ON for this list; another list's name when that one is there (a tap
+      // moves it here); OFF when no list is.
+      gtasks::Asleep asleep;
+      const bool onTasks =
+          SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::TASKS && library_.loadAsleep(asleep);
+      std::string sleepLabel = "OFF";
+      if (onTasks && asleep.listId == meta_.currentList) {
+        sleepLabel = "THIS LIST";
+      } else if (onTasks) {
+        sleepLabel = asleepTitle();
+        if (sleepLabel.empty()) sleepLabel = "ANOTHER LIST";
+        for (char& c : sleepLabel) {
+          if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
+        }
+      }
+      model.sleepLabel = sleepLabel.c_str();
       model.signedIn = creds_.complete();
       gtasksui::buildSettings(screen, model);
       what = "Tasks settings";
+      break;
+    }
+    case Phase::Lists: {
+      const std::string asleepId = [this]() {
+        gtasks::Asleep a;
+        return SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::TASKS && library_.loadAsleep(a)
+                   ? a.listId
+                   : std::string();
+      }();
+      listDetails_.clear();
+      listChoices_.clear();
+      listDetails_.reserve(lists_.size());
+      listChoices_.reserve(lists_.size());
+      int current = -1;
+      for (size_t i = 0; i < lists_.size(); ++i) {
+        const gtasks::TaskList& l = lists_[i];
+        // The open list's count is live, so a tick here shows at once.
+        const int open =
+            l.id == meta_.currentList ? static_cast<int>(tasks_.size()) - gtasks::pendingCount(tasks_) : l.open;
+        char detail[24];
+        std::snprintf(detail, sizeof(detail), "%d OPEN", open);
+        listDetails_.push_back(l.id == asleepId ? std::string(detail) + " / ASLEEP" : std::string(detail));
+        if (l.id == meta_.currentList) current = static_cast<int>(i);
+      }
+      for (size_t i = 0; i < lists_.size(); ++i) {
+        gtasksui::ListChoice choice;
+        choice.title = lists_[i].title.c_str();
+        choice.detail = listDetails_[i].c_str();
+        listChoices_.push_back(choice);
+      }
+      gtasksui::ListsModel model;
+      model.lists = listChoices_.empty() ? nullptr : listChoices_.data();
+      model.count = static_cast<int>(listChoices_.size());
+      model.current = current;
+      gtasksui::buildLists(screen, model);
+      what = "Tasks lists";
       break;
     }
     case Phase::SignOutConfirm:
@@ -754,7 +942,8 @@ void GTasksActivity::render(RenderLock&&) {
       }
       if (paged) std::snprintf(pageLabel_, sizeof(pageLabel_), "%d / %d", page_ + 1, pages);
 
-      std::string title = meta_.listTitle.empty() ? std::string("TASKS") : meta_.listTitle;
+      const gtasks::TaskList* open = currentList();
+      std::string title = open == nullptr ? std::string("TASKS") : open->title;
       for (char& c : title) {
         if (c >= 'a' && c <= 'z') c = static_cast<char>(c - 'a' + 'A');
       }
@@ -769,6 +958,7 @@ void GTasksActivity::render(RenderLock&&) {
       model.canPagePrev = page_ > 0;
       model.canPageNext = page_ + 1 < pages;
       model.settingsIcon = &icon_go_settings_32;
+      model.menuIcon = lists_.empty() ? nullptr : &icon_gtasks_menu_32;
       if (meta_.lastSyncAt == 0 && !everAttempted_) {
         model.emptyHeadline = "NOT SYNCED YET";
         model.emptyMessage = "Tap REFRESH to fetch your Google Tasks.";

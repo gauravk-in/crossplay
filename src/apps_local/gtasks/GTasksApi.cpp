@@ -131,29 +131,60 @@ bool Api::refresh(const Client& client, const Credentials& creds, const uint32_t
   return true;
 }
 
-bool Api::listTitle(const AccessToken& token, std::string& title, std::string& message) {
+bool Api::lists(const AccessToken& token, std::vector<TaskList>& out, std::string& message) {
   tokenRefused = false;
-  std::string response;
-  const int status =
-      call(kTasks, "GET", "/tasks/v1/users/@me/lists/@default", token.value, "", nullptr, response, message);
-  if (status == 0) return false;
-  if (status == 401) {
-    tokenRefused = true;
-    message = "Google refused the reader's key.";
-    return false;
+  out.clear();
+  out.reserve(8);
+  JsonDocument filter;
+  filter["nextPageToken"] = true;
+  JsonObject item = filter["items"].add<JsonObject>();
+  item["id"] = true;
+  item["title"] = true;
+
+  std::string pageToken;
+  for (int page = 0; page < kMaxPages; ++page) {
+    std::string path = "/tasks/v1/users/@me/lists?maxResults=100";
+    if (!pageToken.empty()) path += "&pageToken=" + formEncode(pageToken);
+    std::string response;
+    const int status = call(kTasks, "GET", path, token.value, "", nullptr, response, message);
+    if (status == 0) return false;
+    if (status == 401) {
+      tokenRefused = true;
+      message = "Google refused the reader's key.";
+      return false;
+    }
+    JsonDocument doc;
+    if (status != 200 ||
+        deserializeJson(doc, response, DeserializationOption::Filter(filter)) != DeserializationError::Ok) {
+      message = googleSays(response);
+      if (message.empty()) message = "Google would not say which lists there are.";
+      LOG_ERR(kTag, "lists page %d: HTTP %d", page, status);
+      return false;
+    }
+    for (JsonObject l : doc["items"].as<JsonArray>()) {
+      TaskList list;
+      list.id = l["id"] | "";
+      list.title = utf8FoldTypography(l["title"] | "");
+      if (!safeId(list.id)) {
+        LOG_ERR(kTag, "skipping a list whose id cannot name a file");
+        continue;
+      }
+      if (list.title.empty()) list.title = "UNTITLED";
+      out.push_back(std::move(list));
+    }
+    pageToken = doc["nextPageToken"] | "";
+    if (pageToken.empty()) break;
   }
-  JsonDocument doc;
-  if (status != 200 || deserializeJson(doc, response) != DeserializationError::Ok) {
-    message = googleSays(response);
-    if (message.empty()) message = "Google would not say which list this is.";
-    return false;
-  }
-  title = utf8FoldTypography(doc["title"] | "");
+  LOG_INF(kTag, "%d lists", static_cast<int>(out.size()));
   return true;
 }
 
-bool Api::openTasks(const AccessToken& token, std::vector<Task>& out, std::string& message) {
+bool Api::openTasks(const AccessToken& token, const std::string& listId, std::vector<Task>& out, std::string& message) {
   tokenRefused = false;
+  if (!safeId(listId)) {
+    message = "That list cannot be read.";
+    return false;
+  }
   out.clear();
   out.reserve(64);
 
@@ -171,7 +202,7 @@ bool Api::openTasks(const AccessToken& token, std::vector<Task>& out, std::strin
 
   std::string pageToken;
   for (int page = 0; page < kMaxPages; ++page) {
-    std::string path = "/tasks/v1/lists/@default/tasks?showCompleted=false&showHidden=false&maxResults=100";
+    std::string path = "/tasks/v1/lists/" + listId + "/tasks?showCompleted=false&showHidden=false&maxResults=100";
     if (!pageToken.empty()) path += "&pageToken=" + formEncode(pageToken);
     std::string response;
     const int status = call(kTasks, "GET", path, token.value, "", nullptr, response, message);
@@ -206,20 +237,20 @@ bool Api::openTasks(const AccessToken& token, std::vector<Task>& out, std::strin
     pageToken = doc["nextPageToken"] | "";
     if (pageToken.empty()) break;
   }
-  LOG_INF(kTag, "%d open tasks", static_cast<int>(out.size()));
+  LOG_INF(kTag, "%s: %d open tasks", listId.c_str(), static_cast<int>(out.size()));
   return true;
 }
 
-bool Api::complete(const AccessToken& token, const std::string& id, std::string& message) {
+bool Api::complete(const AccessToken& token, const std::string& listId, const std::string& id, std::string& message) {
   tokenRefused = false;
-  if (!safeId(id)) {
+  if (!safeId(id) || !safeId(listId)) {
     // Not a request worth making, and not one worth retrying forever either:
     // report it gone so the tick leaves the queue.
     LOG_ERR(kTag, "refusing to complete a task with a malformed id");
     return true;
   }
   std::string response;
-  const int status = call(kTasks, "PATCH", "/tasks/v1/lists/@default/tasks/" + id, token.value,
+  const int status = call(kTasks, "PATCH", "/tasks/v1/lists/" + listId + "/tasks/" + id, token.value,
                           "{\"status\":\"completed\"}", "application/json", response, message);
   if (status == 0) return false;
   if (status == 401) {

@@ -14740,9 +14740,10 @@ void settingsOffersSignOutOnlyWhenSignedIn() {
     model.signedIn = signedIn;
     render(out, [&](toybox::Screen& screen) { gtasksui::buildSettings(screen, model); });
     CHECK(drewText(out, "EVERY MIN"));
-    CHECK(drewText(out, "SYNC ON CHARGER"));
+    CHECK(drewText(out, "AUTO SYNC"));
     CHECK(drewText(out, "SIGN OUT") == signedIn);
-    CHECK(countOf(out, gtasksui::ActionSettingRow) == (signedIn ? 2 : 1));
+    CHECK(drewText(out, "SLEEP SCREEN") == signedIn);
+    CHECK(countOf(out, gtasksui::ActionSettingRow) == (signedIn ? 3 : 1));
     CHECK(out.has(gtasksui::ActionCloseSettings));
   }
 }
@@ -14788,6 +14789,85 @@ void thePhonePageQrSitsAboveItsAddress() {
   fui::Rect cancel{};
   CHECK(rectOf(out, gtasksui::ActionCancelSignIn, -1, cancel));
   CHECK(qr.y + qr.height < cancel.y);
+}
+
+// The menu left of the title opens the switcher; only when there are lists.
+void theMenuSitsLeftOfTheTitleAndOpensTheLists() {
+  static const freeink::Icon& menu = icon_gtasks_menu_32;
+  gtasksui::Row one;
+  one.title = "Buy milk";
+  for (const bool withMenu : {true, false}) {
+    Rendered out;
+    gtasksui::ListModel model;
+    model.title = "GROCERIES";
+    model.rows = &one;
+    model.count = 1;
+    model.menuIcon = withMenu ? &menu : nullptr;
+    model.settingsIcon = &icon_go_settings_32;
+    render(out, [&](toybox::Screen& screen) { gtasksui::buildList(screen, model); });
+    CHECK(out.has(gtasksui::ActionOpenLists) == withMenu);
+    CHECK(drewText(out, "GROCERIES"));
+    if (withMenu) {
+      fui::Rect menuRect{};
+      fui::Rect gear{};
+      CHECK(rectOf(out, gtasksui::ActionOpenLists, -1, menuRect));
+      CHECK(rectOf(out, gtasksui::ActionSettings, -1, gear));
+      CHECK(menuRect.x < gear.x);
+      CHECK(menuRect.y < 80);
+    }
+  }
+}
+
+void everyListIsARowThatNamesItsIndex() {
+  gtasksui::ListChoice lists[3];
+  lists[0].title = "My Tasks";
+  lists[0].detail = "4 OPEN";
+  lists[1].title = "Groceries";
+  lists[1].detail = "2 OPEN / ASLEEP";
+  lists[2].title = "Work";
+  lists[2].detail = "0 OPEN";
+  gtasksui::ListsModel model;
+  model.lists = lists;
+  model.count = 3;
+  model.current = 1;
+  Rendered out;
+  render(out, [&](toybox::Screen& screen) { gtasksui::buildLists(screen, model); });
+  CHECK(!out.interactions.overflowed());
+  CHECK(countOf(out, gtasksui::ActionPickList) == 3);
+  CHECK(drewText(out, "Groceries"));
+  CHECK(drewText(out, "2 OPEN / ASLEEP"));
+  CHECK(out.has(gtasksui::ActionCloseLists));
+  for (int i = 0; i < 3; ++i) {
+    fui::Rect row{};
+    CHECK(rectOf(out, gtasksui::ActionPickList, i, row));
+    const fui::ActionEvent hit = out.tap(row.x + row.width / 2, row.y + row.height / 2);
+    CHECK(hit.action == gtasksui::ActionPickList && hit.value == i);
+  }
+}
+
+// Asleep, the list is a picture: nothing to tap, and more rows than awake.
+void asleepTheListHasNoButtonsAndMoreRoom() {
+  const int awake = gtasksui::listCapacity(Rendered().target, device(), false);
+  const int asleep = gtasksui::listCapacity(Rendered().target, device(), false, true);
+  CHECK(asleep > awake);
+  std::vector<gtasksui::Row> rows(static_cast<size_t>(asleep));
+  for (auto& r : rows) r.title = "Water the plants";
+  gtasksui::ListModel model;
+  model.title = "HOME";
+  model.status = "9 OPEN";
+  model.rows = rows.data();
+  model.count = asleep;
+  model.asleep = true;
+  model.settingsIcon = &icon_go_settings_32;
+  model.menuIcon = &icon_gtasks_menu_32;
+  Rendered out;
+  render(out, [&](toybox::Screen& screen) { gtasksui::buildList(screen, model); });
+  CHECK(!out.has(gtasksui::ActionRefresh));
+  CHECK(!out.has(gtasksui::ActionToggle));
+  CHECK(!out.has(gtasksui::ActionOpenLists));
+  CHECK(!out.has(gtasksui::ActionSettings));
+  CHECK(drewText(out, "HOME"));
+  CHECK(drewText(out, "9 OPEN"));
 }
 
 }  // namespace gtaskstest
@@ -15218,6 +15298,9 @@ int main() {
   workoutstest::everyExerciseRowAddsASetAndUndoIsOnlyThereToUse();
   workoutstest::aLongScheduleIsPagedByTheSameCapacity();
   workoutstest::thePhoneScreenReservesTheCodeAndLeavesOneWayOut();
+  gtaskstest::theMenuSitsLeftOfTheTitleAndOpensTheLists();
+  gtaskstest::everyListIsARowThatNamesItsIndex();
+  gtaskstest::asleepTheListHasNoButtonsAndMoreRoom();
   notestest::aNoteAsleepIsReadOnlyAndTaller();
   wordletest::everyKeyIsWhereItIsDrawn();
   wordletest::aFinishedGameShowsTheAnswerAndLetsGo();

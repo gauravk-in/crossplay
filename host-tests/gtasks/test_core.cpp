@@ -260,6 +260,44 @@ void testFormEncodingAndIds() {
 
 }  // namespace
 
+// Every list, in Google's order, survives the card; a list whose id could
+// spell a path is dropped rather than written.
+void testListsRoundTrip() {
+  std::vector<gtasks::TaskList> lists(3);
+  lists[0].id = "MDk4NjM1";
+  lists[0].title = "My Tasks";
+  lists[0].open = 7;
+  lists[1].id = "../evil";
+  lists[1].title = "Nope";
+  lists[2].id = "Z3JvY2Vy";
+  lists[2].title = "Groceries\tand\nthings";
+  const std::vector<gtasks::TaskList> back = gtasks::parseLists(gtasks::serializeLists(lists));
+  CHECK(back.size() == 2);
+  CHECK_EQ(back[0].id, "MDk4NjM1");
+  CHECK_EQ(back[0].title, "My Tasks");
+  CHECK(back[0].open == 7);
+  CHECK_EQ(back[1].title, "Groceries and things");
+  CHECK(gtasks::parseLists("gtasks 1\nabc\t1\tx\n").empty());
+  CHECK(gtasks::parseLists("").empty());
+}
+
+void testAsleepRoundTrip() {
+  gtasks::Asleep a;
+  a.listId = "Z3JvY2Vy";
+  a.previousMode = 3;
+  a.previousQuick = 1;
+  gtasks::Asleep back;
+  CHECK(gtasks::parseAsleep(gtasks::serializeAsleep(a), back));
+  CHECK_EQ(back.listId, "Z3JvY2Vy");
+  CHECK(back.previousMode == 3);
+  CHECK(back.previousQuick == 1);
+  // Nothing recorded is -1, and a file with no usable list is no choice.
+  CHECK(gtasks::parseAsleep("list=abc\n", back));
+  CHECK(back.previousMode == -1 && back.previousQuick == -1);
+  CHECK(!gtasks::parseAsleep("list=../x\n", back));
+  CHECK(!gtasks::parseAsleep("", back));
+}
+
 int main() {
   testCredentialsRoundTrip();
   testCredentialsToleratesAHandEditedFile();
@@ -280,6 +318,8 @@ int main() {
   testPollChoicesCycleThroughOff();
   testPollOnlyOnTheCharger();
   testFormEncodingAndIds();
+  testListsRoundTrip();
+  testAsleepRoundTrip();
   std::printf("%d checks, %d failed\n", checksRun, checksFailed);
   return checksFailed == 0 ? 0 : 1;
 }
