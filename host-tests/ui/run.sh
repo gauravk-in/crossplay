@@ -67,6 +67,10 @@ mkdir -p "$BUILD_DIR"
   ../../src/apps_local/gtasks/GTasksScreens.cpp \
   ../../src/apps_local/workouts/WorkoutsCore.cpp \
   ../../src/apps_local/workouts/WorkoutsScreens.cpp \
+  ../../src/apps_local/gcal/GCalScreens.cpp \
+  ../../src/apps_local/gcal/GCalCore.cpp \
+  ../../src/apps_local/gtasks/GTasksCore.cpp \
+  ../../src/network/DeviceReportCore.cpp \
   ../../src/apps_local/wordle/WordleScreens.cpp \
   ../../src/apps_local/wordle/WordleCore.cpp \
   ../../src/apps_local/murdle/MurdleCast.cpp \

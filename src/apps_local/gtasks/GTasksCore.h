@@ -80,7 +80,10 @@ Client parseClient(const std::string& text);
 // the reader's page, and the reader trades the code for a refresh token.
 
 constexpr const char* kRedirectUri = "http://127.0.0.1:1";
-constexpr const char* kScopes = "openid email https://www.googleapis.com/auth/tasks";
+// Calendar reads with the same sign-in (apps_local/gcal), so one sign-in asks
+// for both.
+constexpr const char* kScopes =
+    "openid email https://www.googleapis.com/auth/tasks https://www.googleapis.com/auth/calendar.readonly";
 
 // base64url(sha256(verifier)), unpadded: PKCE's S256 challenge.
 std::string pkceChallenge(const std::string& verifier);

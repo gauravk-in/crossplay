@@ -38,6 +38,9 @@ class Library {
   // choice. Settings stay, because they describe this reader rather than the
   // account.
   void signOut() const;
+  // Forgets only the token, which Calendar shares: its sign-out signs the
+  // reader out of Google and leaves Tasks' lists for Tasks to deal with.
+  void forgetToken() const;
 
   std::vector<TaskList> loadLists() const;
   bool saveLists(const std::vector<TaskList>& lists) const;

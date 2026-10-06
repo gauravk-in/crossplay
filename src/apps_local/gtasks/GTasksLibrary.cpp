@@ -94,6 +94,8 @@ void Library::signOut() const {
   clearAsleep();
 }
 
+void Library::forgetToken() const { Storage.remove(kAuth); }
+
 std::vector<TaskList> Library::loadLists() const {
   std::string text;
   if (!readWhole(kLists, text)) return {};
