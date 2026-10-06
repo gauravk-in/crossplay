@@ -21,6 +21,10 @@ Everything above the marker is written by hand.
 
 <!-- releases, newest first -->
 
+### 1.14.0
+
+- Sync CrossPoint develop (22 commits)
+
 ### 1.13.34
 
 - Study sync: decks failed for a stray font, and the reader never said why
