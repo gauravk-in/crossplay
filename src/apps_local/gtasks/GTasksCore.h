@@ -115,6 +115,34 @@ std::string idTokenEmail(const std::string& idToken);
 std::string serializeTasks(const std::vector<Task>& tasks);
 std::vector<Task> parseTasks(const std::string& text);
 
+// Every list on the account, in Google's order, with how many open tasks it had
+// at the last sync (for the switcher). One per line after a version line:
+//   gtasks-lists 1
+//   <id>\t<open>\t<title>
+// A list whose id fails safeId() is dropped: the id names a file on the card
+// and goes into a URL path.
+struct TaskList {
+  std::string id;
+  std::string title;
+  int open = 0;
+};
+std::string serializeLists(const std::vector<TaskList>& lists);
+std::vector<TaskList> parseLists(const std::string& text);
+
+// The list shown while the reader sleeps (Settings > Sleep screen > Tasks), and
+// the sleep settings it replaced so turning it off puts them back. -1 is "not
+// recorded".
+//   list=<id>
+//   previous_mode=<n>
+//   previous_quick=<n>
+struct Asleep {
+  std::string listId;
+  int previousMode = -1;
+  int previousQuick = -1;
+};
+bool parseAsleep(const std::string& text, Asleep& out);
+std::string serializeAsleep(const Asleep& asleep);
+
 // Google's order: parents by position, each followed by its own children by
 // position. A child whose parent is not in the list is drawn as a parent.
 void sortForDisplay(std::vector<Task>& tasks);

@@ -11,7 +11,10 @@ namespace {
 constexpr const char* kTag = "GTASKS";
 constexpr const char* kDir = "/.crosspoint/gtasks";
 constexpr const char* kAuth = "/.crosspoint/gtasks/auth.cfg";
-constexpr const char* kTasks = "/.crosspoint/gtasks/tasks.tsv";
+// The single-list cache of the first version; only ever removed now.
+constexpr const char* kLegacyTasks = "/.crosspoint/gtasks/tasks.tsv";
+constexpr const char* kLists = "/.crosspoint/gtasks/lists.tsv";
+constexpr const char* kAsleep = "/.crosspoint/gtasks/asleep.cfg";
 constexpr const char* kSettings = "/.crosspoint/gtasks/settings.cfg";
 constexpr const char* kMeta = "/.crosspoint/gtasks/meta.cfg";
 constexpr const char* kClient = "/.crosspoint/gtasks/client.cfg";
@@ -50,6 +53,9 @@ bool writeAtomically(const char* path, const std::string& text) {
   return true;
 }
 
+// safeId() is what keeps a list id from naming any other file.
+std::string listPath(const std::string& listId) { return std::string(kDir) + "/list-" + listId + ".tsv"; }
+
 }  // namespace
 
 Credentials Library::loadCredentials() const {
@@ -80,20 +86,51 @@ Client Library::loadClient() const {
 }
 
 void Library::signOut() const {
+  for (const TaskList& l : loadLists()) removeTasks(l.id);
   Storage.remove(kAuth);
-  Storage.remove(kTasks);
+  Storage.remove(kLists);
+  Storage.remove(kLegacyTasks);
   Storage.remove(kMeta);
+  clearAsleep();
 }
 
-std::vector<Task> Library::loadTasks() const {
+std::vector<TaskList> Library::loadLists() const {
   std::string text;
-  if (!readWhole(kTasks, text)) return {};
+  if (!readWhole(kLists, text)) return {};
+  return parseLists(text);
+}
+
+bool Library::saveLists(const std::vector<TaskList>& lists) const {
+  return writeAtomically(kLists, serializeLists(lists));
+}
+
+std::vector<Task> Library::loadTasks(const std::string& listId) const {
+  if (!safeId(listId)) return {};
+  std::string text;
+  if (!readWhole(listPath(listId).c_str(), text)) return {};
   std::vector<Task> tasks = parseTasks(text);
   sortForDisplay(tasks);
   return tasks;
 }
 
-bool Library::saveTasks(const std::vector<Task>& tasks) const { return writeAtomically(kTasks, serializeTasks(tasks)); }
+bool Library::saveTasks(const std::string& listId, const std::vector<Task>& tasks) const {
+  if (!safeId(listId)) return false;
+  return writeAtomically(listPath(listId).c_str(), serializeTasks(tasks));
+}
+
+void Library::removeTasks(const std::string& listId) const {
+  if (safeId(listId)) Storage.remove(listPath(listId).c_str());
+}
+
+bool Library::loadAsleep(Asleep& out) const {
+  std::string text;
+  if (!readWhole(kAsleep, text)) return false;
+  return parseAsleep(text, out);
+}
+
+bool Library::saveAsleep(const Asleep& asleep) const { return writeAtomically(kAsleep, serializeAsleep(asleep)); }
+
+void Library::clearAsleep() const { Storage.remove(kAsleep); }
 
 Settings Library::loadSettings() const {
   std::string text;
@@ -115,18 +152,15 @@ Meta Library::loadMeta() const {
     if (end == std::string::npos) end = text.size();
     const std::string line = text.substr(start, end - start);
     start = end + 1;
-    if (line.rfind("title=", 0) == 0) meta.listTitle = line.substr(6);
+    if (line.rfind("list=", 0) == 0) meta.currentList = line.substr(5);
     if (line.rfind("synced=", 0) == 0) meta.lastSyncAt = std::atoll(line.c_str() + 7);
   }
   return meta;
 }
 
 bool Library::saveMeta(const Meta& meta) const {
-  std::string title = meta.listTitle;
-  for (char& c : title) {
-    if (c == '\n' || c == '\r') c = ' ';
-  }
-  return writeAtomically(kMeta, "title=" + title + "\nsynced=" + std::to_string(meta.lastSyncAt) + "\n");
+  const std::string list = safeId(meta.currentList) ? meta.currentList : std::string();
+  return writeAtomically(kMeta, "list=" + list + "\nsynced=" + std::to_string(meta.lastSyncAt) + "\n");
 }
 
 }  // namespace gtasks

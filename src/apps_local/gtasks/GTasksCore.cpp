@@ -10,6 +10,7 @@ namespace gtasks {
 namespace {
 
 constexpr const char* kCacheHeader = "gtasks 1";
+constexpr const char* kListsHeader = "gtasks-lists 1";
 
 std::string trim(const std::string& s) {
   size_t a = 0;
@@ -312,6 +313,57 @@ std::vector<Task> parseTasks(const std::string& text) {
     out.push_back(std::move(t));
   }
   return out;
+}
+
+std::string serializeLists(const std::vector<TaskList>& lists) {
+  std::string out = kListsHeader;
+  out += '\n';
+  for (const TaskList& l : lists) {
+    if (!safeId(l.id)) continue;
+    out += l.id;
+    out += '\t';
+    out += std::to_string(l.open < 0 ? 0 : l.open);
+    out += '\t';
+    out += flatten(l.title);
+    out += '\n';
+  }
+  return out;
+}
+
+std::vector<TaskList> parseLists(const std::string& text) {
+  std::vector<TaskList> out;
+  const std::vector<std::string> all = lines(text);
+  if (all.empty() || all[0] != kListsHeader) return out;
+  out.reserve(all.size() - 1);
+  for (size_t i = 1; i < all.size(); ++i) {
+    const std::vector<std::string> f = splitTabs(all[i]);
+    if (f.size() != 3 || !safeId(f[0])) continue;
+    TaskList l;
+    l.id = f[0];
+    l.open = std::atoi(f[1].c_str());
+    l.title = f[2];
+    out.push_back(std::move(l));
+  }
+  return out;
+}
+
+bool parseAsleep(const std::string& text, Asleep& out) {
+  out = Asleep{};
+  for (const auto& [key, value] : keyValues(text)) {
+    if (key == "list") {
+      out.listId = value;
+    } else if (key == "previous_mode") {
+      out.previousMode = std::atoi(value.c_str());
+    } else if (key == "previous_quick") {
+      out.previousQuick = std::atoi(value.c_str());
+    }
+  }
+  return safeId(out.listId);
+}
+
+std::string serializeAsleep(const Asleep& asleep) {
+  return "list=" + asleep.listId + "\nprevious_mode=" + std::to_string(asleep.previousMode) +
+         "\nprevious_quick=" + std::to_string(asleep.previousQuick) + "\n";
 }
 
 bool isChild(const Task& task, const std::vector<Task>& all) {

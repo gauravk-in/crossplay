@@ -27,6 +27,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     TRANSPARENT_CUSTOM = 7,
     // CrossPlay: the note chosen in Notes, drawn live (apps_local/notes/NotesSleep.h).
     NOTE = 8,
+    // CrossPlay: the list chosen in Tasks, drawn live (apps_local/gtasks/GTasksSleep.h).
+    TASKS = 9,
     SLEEP_SCREEN_MODE_COUNT
   };
   enum SLEEP_SCREEN_COVER_MODE { FIT = 0, CROP = 1, SLEEP_SCREEN_COVER_MODE_COUNT };

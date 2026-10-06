@@ -1,7 +1,8 @@
 # Tasks (Google Tasks)
 
-Your default Google Tasks list on the reader. Tick things off with a tap; the
-ticks go up to Google on the next sync.
+Every Google Tasks list on the reader, one on screen at a time. Tick things off
+with a tap; the ticks go up to Google on the next sync. Any list can also be the
+picture the reader shows while it is off.
 
 ## Signing in
 
@@ -17,7 +18,7 @@ Google key is kept in `auth.cfg` on the card and goes only to Google.
 3. Google then sends the phone to a `127.0.0.1` page that will not load. That
    is expected. Copy the whole address from the address bar, go back to the
    reader's page, paste it and tap **Send to the reader**.
-4. The page says who you signed in as, and the reader fetches your list.
+4. The page says who you signed in as, and the reader fetches your lists.
 
 Google's own device sign-in (a code typed at google.com/device) does not allow
 the Tasks permission, which is why the reader runs the installed-app sign-in
@@ -59,17 +60,31 @@ verified, which a personal client can click through.
 - **Tap a row** to tick it. The row is struck through and the band says how
   many ticks are waiting to go up. Tap it again before a sync to take the tick
   back.
+- **The menu button**, left of the list's name, opens **LISTS**: every list on
+  the account with how many tasks are open in it. Tap one to show it. The
+  reader opens on the list you looked at last.
 - **REFRESH** joins the saved Wi-Fi network (or opens the Wi-Fi picker when
-  there is none), sends your ticks, and reads the list again.
+  there is none), sends your ticks from every list, and reads every list again.
+  A list deleted on Google disappears from the card on the next sync.
 - **On the charger**, with the app open, the reader checks Google by itself
   every minute and keeps the screen awake. The band reads **AUTO SYNC**, or
   **OFFLINE** when a check could not get through. The panel repaints only when
   the list actually changed. Off the charger nothing polls and the reader
   sleeps as usual.
-- **The gear** opens settings: how often to check on the charger (every 1, 2,
-  5, 10, 15, 30 or 60 minutes, or off), and **SIGN OUT**, which removes the
-  token and the list from the card, and tells Google to revoke the grant when
-  Wi-Fi is up.
+- **The gear** opens settings:
+  - **AUTO SYNC**: how often to check on the charger (every 1, 2, 5, 10, 15,
+    30 or 60 minutes, or off).
+  - **SLEEP SCREEN**: tap it to put the list on screen on the panel while the
+    reader is off. It reads **THIS LIST**, the name of another list that is
+    already there, or **OFF**. Tapping it on the list that is already there
+    turns it off and puts back the sleep screen you had before. It is also
+    **Tasks** under the reader's own Sleep Screen setting, and choosing that
+    with no list picked shows the default sleep screen. The sleep screen
+    shows the list as last synced, without buttons; the reader does not go
+    online to draw it.
+  - **SIGN OUT** removes the token and every list from the card, puts back
+    your old sleep screen, and tells Google to revoke the grant when Wi-Fi is
+    up.
 - The side keys page a long list.
 
 Completed tasks are not shown. Subtasks are indented under their parent.
@@ -82,9 +97,11 @@ Completed tasks are not shown. Subtasks are indented under their parent.
 | -------------- | ------------------------------------------------------------------ |
 | `auth.cfg`     | Google's refresh token for this reader, and the account's address  |
 | `client.cfg`   | the Google OAuth client (see above), unless it is built in         |
-| `tasks.tsv`    | the list as last synced, plus ticks not yet sent                   |
+| `lists.tsv`    | every list's id, title and open count as last synced               |
+| `list-<id>.tsv`| one list's tasks as last synced, plus ticks not yet sent           |
 | `settings.cfg` | `poll_minutes=N`                                                   |
-| `meta.cfg`     | the list's title and when it last synced                           |
+| `meta.cfg`     | the list on screen and when the lists last synced                  |
+| `asleep.cfg`   | the list on the sleep screen, and the sleep settings it replaced   |
 | `.roots.pem`   | optional: CA roots that override the built-in bundle               |
 
 The connections to Google are verified TLS against the roots the other bridges

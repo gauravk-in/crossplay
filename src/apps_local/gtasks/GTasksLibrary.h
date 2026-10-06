@@ -5,9 +5,11 @@
 //   auth.cfg      the Google refresh token and address (the reader writes it)
 //   client.cfg    the Google Cloud desktop client to sign in as, unless the
 //                 build carries one (GTASKS_CLIENT_ID / GTASKS_CLIENT_SECRET)
-//   tasks.tsv     the list as last synced, plus ticks not yet sent
+//   lists.tsv     every list on the account, as last synced
+//   list-<id>.tsv one list's tasks as last synced, plus ticks not yet sent
 //   settings.cfg  how often to poll on the charger
-//   meta.cfg      the list's title and when it last synced
+//   meta.cfg      which list is open, and when the lists last synced
+//   asleep.cfg    the list on the sleep screen, if any
 //
 // Beside the reader's own state, so clearing `.crosspoint/` clears this too.
 // Every write goes through a .part and a rename, so a reset mid-write leaves
@@ -22,8 +24,8 @@
 namespace gtasks {
 
 struct Meta {
-  std::string listTitle;
-  int64_t lastSyncAt = 0;  // epoch seconds, 0 when never or the clock was unset
+  std::string currentList;  // "" until the first sync names one
+  int64_t lastSyncAt = 0;   // epoch seconds, 0 when never or the clock was unset
 };
 
 class Library {
@@ -32,12 +34,21 @@ class Library {
   bool saveCredentials(const Credentials& creds) const;
   // client.cfg's, else the one built in, else an incomplete Client.
   Client loadClient() const;
-  // Forgets the account: the token, the cached list and its title. Settings
-  // stay, because they describe this reader rather than the account.
+  // Forgets the account: the token, every cached list and the sleep-screen
+  // choice. Settings stay, because they describe this reader rather than the
+  // account.
   void signOut() const;
 
-  std::vector<Task> loadTasks() const;
-  bool saveTasks(const std::vector<Task>& tasks) const;
+  std::vector<TaskList> loadLists() const;
+  bool saveLists(const std::vector<TaskList>& lists) const;
+
+  std::vector<Task> loadTasks(const std::string& listId) const;
+  bool saveTasks(const std::string& listId, const std::vector<Task>& tasks) const;
+  void removeTasks(const std::string& listId) const;
+
+  bool loadAsleep(Asleep& out) const;
+  bool saveAsleep(const Asleep& asleep) const;
+  void clearAsleep() const;
 
   Settings loadSettings() const;
   bool saveSettings(const Settings& settings) const;

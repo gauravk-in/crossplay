@@ -61,7 +61,7 @@ class GTasksActivity final : public Activity {
   bool skipLoopDelay() override { return server_ && server_->isRunning(); }
 
  private:
-  enum class Phase : uint8_t { List, Settings, SignOutConfirm, SignIn, Phone, Busy, Notice };
+  enum class Phase : uint8_t { List, Lists, Settings, SignOutConfirm, SignIn, Phone, Busy, Notice };
   // What the busy screen announced and the next pass runs.
   enum class Step : uint8_t { None, Sync, SignIn };
 
@@ -83,6 +83,14 @@ class GTasksActivity final : public Activity {
   bool ensureToken(std::string& message);
   void backgroundPoll();
   void toggle(int index);
+  void pickList(int index);
+  // Puts the open list on the sleep screen, or takes it off if it is there.
+  void toggleAsleep();
+  // Gives back the sleep settings the list replaced, when it is still the
+  // sleep screen. Leaves asleep.cfg alone.
+  void restoreSleepSettings(const gtasks::Asleep& asleep);
+  const gtasks::TaskList* currentList() const;
+  std::string asleepTitle() const;
   void stepPage(int delta);
   void reloadCredentials();
   void signOut();
@@ -97,6 +105,8 @@ class GTasksActivity final : public Activity {
   gtasks::AccessToken token_;
   gtasks::Settings settings_;
   gtasks::Meta meta_;
+  std::vector<gtasks::TaskList> lists_;
+  // The open list's tasks. Every other list stays on the card until opened.
   std::vector<gtasks::Task> tasks_;
 
   Phase phase_ = Phase::List;
@@ -134,6 +144,8 @@ class GTasksActivity final : public Activity {
   // Owned here because the screen model holds pointers.
   std::vector<gtasksui::Row> rows_;
   std::vector<std::string> dueLabels_;
+  std::vector<std::string> listDetails_;
+  std::vector<gtasksui::ListChoice> listChoices_;
   char status_[24] = "";
   char pageLabel_[16] = "";
 

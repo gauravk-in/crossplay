@@ -31,6 +31,9 @@ enum : fui::ActionId {
   ActionPageNext = 369,
   ActionStartSignIn = 370,
   ActionCancelSignIn = 371,
+  ActionOpenLists = 372,
+  ActionPickList = 373,
+  ActionCloseLists = 374,
 };
 
 // --- The list --------------------------------------------------------------
@@ -56,8 +59,13 @@ struct ListModel {
   const char* pageLabel = nullptr;
   bool canPagePrev = false;
   bool canPageNext = false;
-  // Owned by the Activity, which knows the glyphs.
+  // Owned by the Activity, which knows the glyphs. The menu sits left of the
+  // title and opens the list switcher; the gear sits right.
   const freeink::Icon* settingsIcon = nullptr;
+  const freeink::Icon* menuIcon = nullptr;
+  // Drawn for the sleep screen: no buttons, no tap targets, and the rows run
+  // to the bottom of the panel where the footer would be.
+  bool asleep = false;
   // Shown on an empty list. Different before the first sync than after it.
   const char* emptyHeadline = "ALL DONE";
   const char* emptyMessage = "Nothing open in this list.";
@@ -67,17 +75,34 @@ void buildList(toybox::Screen& screen, const ListModel& model);
 
 // How many rows one page holds. Asked of the same layout the drawing uses, so
 // the page label, the side keys and the drawn rows cannot disagree.
-int listCapacity(const fui::DrawTarget& target, const fui::DeviceContext& device, bool paged);
+int listCapacity(const fui::DrawTarget& target, const fui::DeviceContext& device, bool paged, bool asleep = false);
+
+// --- The list switcher -----------------------------------------------------
+
+struct ListChoice {
+  const char* title = "";
+  const char* detail = "";  // "4 OPEN", "ON SLEEP SCREEN"
+};
+
+struct ListsModel {
+  const ListChoice* lists = nullptr;
+  int count = 0;
+  int current = -1;  // marked as selected
+};
+
+// Every list, one row each; a tap carries the row's index in ActionPickList.
+void buildLists(toybox::Screen& screen, const ListsModel& model);
 
 // --- Settings --------------------------------------------------------------
 
 struct SettingsModel {
-  const char* pollLabel = "";  // "EVERY MIN"
+  const char* pollLabel = "";   // "EVERY MIN"
+  const char* sleepLabel = "";  // "OFF", or the list on the sleep screen
   bool signedIn = false;
 };
 
-// The rows, in order. ActionSettingRow carries the index.
-enum class SettingRow : uint8_t { Poll, SignOut };
+// The rows. ActionSettingRow carries the value, not the position.
+enum class SettingRow : uint8_t { Poll, Sleep, SignOut };
 
 void buildSettings(toybox::Screen& screen, const SettingsModel& model);
 
