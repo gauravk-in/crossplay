@@ -623,6 +623,44 @@ def main(env):
         "String::begin/end (range-for)",
         marker="const char *begin() const",
     )
+    # Upstream's per-book content keys (lib/DeviceSecret, lib/Epub/BookKey,
+    # 2026-10) keep a device secret in NVS. The simulator's nvs.h and
+    # esp_random.h shadow sim-stubs/, so they are patched here. A blob read
+    # FAILS rather than reporting not-found: deviceSecret() then gives up
+    # instead of minting a fresh secret every launch, so protected books are
+    # visibly unsupported in the simulator rather than silently re-keyed.
+    patch(
+        src / "nvs.h",
+        "inline void nvs_close(nvs_handle_t /*handle*/) {}",
+        "inline void nvs_close(nvs_handle_t /*handle*/) {}\n"
+        "#ifndef ESP_ERR_NVS_NOT_FOUND\n#define ESP_ERR_NVS_NOT_FOUND 0x1102\n#endif\n"
+        "inline esp_err_t nvs_get_blob(nvs_handle_t, const char *, void *, size_t *) { return ESP_FAIL; }\n"
+        "inline esp_err_t nvs_set_blob(nvs_handle_t, const char *, const void *, size_t) { return ESP_FAIL; }",
+        "nvs blob calls (device secret unavailable on a host)",
+        marker="nvs_get_blob",
+    )
+    patch(
+        src / "esp_random.h",
+        "inline uint32_t esp_random() { return std::random_device{}(); }",
+        "inline uint32_t esp_random() { return std::random_device{}(); }\n"
+        "inline void esp_fill_random(void *buf, size_t len) {\n"
+        "  auto *p = static_cast<uint8_t *>(buf);\n"
+        "  for (size_t i = 0; i < len; i++) p[i] = static_cast<uint8_t>(esp_random());\n"
+        "}",
+        "esp_fill_random",
+        marker="esp_fill_random",
+    )
+    # /api/status lowercases ?plugin= before hashing it (upstream, 2026-10).
+    patch(
+        src / "WString.h",
+        "  void trim() {",
+        "  void toLowerCase() {\n"
+        "    for (char &c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));\n"
+        "  }\n"
+        "  void trim() {",
+        "String::toLowerCase",
+        marker="void toLowerCase()",
+    )
     # lib/TrustedTime (same sync) sets the clock with settimeofday(). The ESP32
     # Arduino core reaches <sys/time.h> through Arduino.h; the simulator's
     # Arduino.h does not, and on a macOS host nothing else declares it.
@@ -642,6 +680,27 @@ def main(env):
         "  bool getFactoryMac(char (&)[18]) const { return false; }",
         "HalGPIO::getFactoryMac (none on a host)",
         marker="getFactoryMac",
+    )
+    # On the device NetworkClient is a Print (Client -> Stream -> Print), and
+    # upstream's WebDAV GET (#3410) streams a file into it through
+    # HalStorage::readFileToStream(path, Print&). The simulator's is a bare class.
+    patch(
+        src / "NetworkClient.h",
+        "class NetworkClient {\n",
+        '#include "Print.h"\n\nclass NetworkClient : public Print {\n',
+        "NetworkClient is a Print, as on the device",
+        marker="class NetworkClient : public Print",
+    )
+    # Upstream's capacitive page keys (Metalio E-Ink 4, 2026-10): MappedInputManager
+    # asks for them on every board, and a host has none.
+    patch(
+        src / "HalGPIO.h",
+        "  bool hasTouch() const;",
+        "  bool hasTouch() const;\n"
+        "  bool wasCapacitivePagePressed() const { return false; }\n"
+        "  bool isCapacitivePagePressed(uint8_t) const { return false; }",
+        "HalGPIO capacitive page keys (none on a host)",
+        marker="wasCapacitivePagePressed",
     )
 
     # -- the seam, checked rather than remembered -------------------------------
