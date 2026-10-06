@@ -10,8 +10,9 @@
 //
 // There is no editor on the device. A schedule is a list of names and numbers,
 // which is twenty taps on a phone keyboard and two hundred on this one, so the
-// device's only edit is the tick and the phone page does the rest -- Notes'
-// TYPE ON YOUR PHONE, promoted from a menu row to the app's one action.
+// device's edits are the tick and the weight's - and +, and the phone page does
+// the rest -- Notes' TYPE ON YOUR PHONE, promoted from a menu row to the app's
+// one action.
 
 #include <cstdint>
 #include <memory>
@@ -42,7 +43,7 @@ class WorkoutsActivity final : public Activity {
   bool skipLoopDelay() override { return server_ && server_->isRunning(); }
 
  private:
-  enum class View : uint8_t { Home, Schedule, Phone, Notice };
+  enum class View : uint8_t { Home, Schedule, ConfirmReset, Phone, Notice };
 
   void loadAll();
   // Today, by the device's clock and timezone; -1 while the clock is unset.
@@ -53,6 +54,9 @@ class WorkoutsActivity final : public Activity {
   void openSchedule(int index);
   void addSet(int exercise);
   void undo();
+  void adjustWeight(int exercise, int delta);
+  void askReset();
+  void reset();
   bool saveToday();
   void saveLog();
   void showNotice(const char* text);
@@ -74,6 +78,10 @@ class WorkoutsActivity final : public Activity {
   // persisted, because an undo that reaches into a previous visit undoes a set
   // the person no longer remembers ticking.
   std::vector<int> undo_;
+  // This visit wrote today's line in the log. Only then does undoing back to
+  // nothing take the day off the week strip: after a RESET the line belongs to
+  // the workout that was finished, and a second round undone does not erase it.
+  bool loggedThisVisit_ = false;
 
   // Row storage the screens point into, rebuilt when the data changes.
   std::vector<workoutsui::ScheduleCard> cards_;
@@ -81,6 +89,7 @@ class WorkoutsActivity final : public Activity {
   std::string pageLabel_;
   std::string tally_;
   std::string notice_;
+  std::string confirm_;
 
   std::unique_ptr<WorkoutsServer> server_;
   bool devPaused_ = false;

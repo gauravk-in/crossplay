@@ -14806,6 +14806,17 @@ int countAction(const Rendered& out, const fui::ActionId action) {
   return n;
 }
 
+// Rows whose target is split around the weight's buttons count once each.
+int rowsWith(const Rendered& out, const fui::ActionId action) {
+  std::vector<int> seen;
+  for (size_t i = 0; i < out.interactions.count(); ++i) {
+    const auto& hit = out.interactions.data()[i];
+    if (hit.action != action) continue;
+    if (std::find(seen.begin(), seen.end(), hit.value) == seen.end()) seen.push_back(hit.value);
+  }
+  return static_cast<int>(seen.size());
+}
+
 bool drew(const Rendered& out, const char* text) {
   for (const auto& run : out.target.texts) {
     if (run.text == text) return true;
@@ -14819,7 +14830,7 @@ workoutsui::HomeModel homeWith(const workoutsui::ScheduleCard* cards, const int 
   model.count = count;
   model.clockSet = true;
   std::vector<workouts::LogEntry> log = workouts::parseLog("20730|arms|Upper\n20732|legs|Lower\n");
-  workouts::weekCells(log, 20732, model.week);
+  workouts::calendarCells(log, 20732, model.days);
   return model;
 }
 
@@ -14837,8 +14848,16 @@ void theHomeScreenOpensEveryVisibleSchedule() {
   // One target per card the page holds, by the same layout the Activity pages
   // with, so the keys and the glass agree about what a page is.
   CHECK(countAction(out, workoutsui::ActionOpenSchedule) == capacity);
-  CHECK(out.has(workoutsui::ActionUsePhone));
-  CHECK(drew(out, "EDIT ON YOUR PHONE"));
+  // The phone page is the pencil on the band, and nothing below it.
+  CHECK(countAction(out, workoutsui::ActionUsePhone) == 1);
+  CHECK(!drew(out, "EDIT ON YOUR PHONE"));
+  for (size_t i = 0; i < out.interactions.count(); ++i) {
+    const auto& hit = out.interactions.data()[i];
+    if (hit.action == workoutsui::ActionUsePhone) {
+      CHECK(hit.rect.y + hit.rect.height <= 119);
+      CHECK(hit.rect.x > 240);
+    }
+  }
   CHECK(drew(out, "6 OF 17 SETS TODAY"));
   CHECK(drew(out, "4 EXERCISES, 15 SETS"));
   CHECK(drew(out, "DONE TODAY"));
@@ -14852,16 +14871,23 @@ void theHomeScreenOpensEveryVisibleSchedule() {
   CHECK(second);
 }
 
-void theWeekStripShowsSevenDaysEndingToday() {
+void theCalendarShowsLastWeekAndThisFromMonday() {
   const workoutsui::ScheduleCard cards[] = {{"Upper Body", 1, 5, 17, 0}};
   Rendered out;
   const workoutsui::HomeModel model = homeWith(cards, 1);
   build(out, [&](toybox::Screen& screen) { workoutsui::buildHome(screen, model); });
-  // 2026-10-06 is a Tuesday, so the strip runs Wednesday the 30th to it.
-  CHECK(drew(out, "W 30"));
+  // 2026-10-06 is a Tuesday, so the calendar runs Monday the 28th of
+  // September to Sunday the 11th.
+  CHECK(drew(out, "M 28"));
+  CHECK(drew(out, "S 4"));
   CHECK(drew(out, "T 6"));
-  CHECK(drew(out, "M 5"));
+  CHECK(drew(out, "S 11"));
+  CHECK(!drew(out, "M 12"));
   CHECK(drew(out, "2 DAYS TRAINED"));
+  // Every cell inside the panel, the second week still above the bottom edge.
+  for (const auto& run : out.target.texts) {
+    CHECK(run.rect.y + run.rect.height <= 800 - 16);
+  }
   // Trained days are solid squares carrying their mark; rest days are not.
   CHECK(out.target.blits.size() >= 2 + 1);
   // Nothing in the strip is a control.
@@ -14873,7 +14899,7 @@ void anUnsetClockSaysSoInsteadOfDrawing1970() {
   workoutsui::HomeModel model;
   model.clockSet = false;
   build(out, [&](toybox::Screen& screen) { workoutsui::buildHome(screen, model); });
-  CHECK(drew(out, "SET UP ON YOUR PHONE"));
+  CHECK(out.has(workoutsui::ActionUsePhone));
   CHECK(!drew(out, "T 1"));
   CHECK(!drew(out, "0 DAYS TRAINED"));
   bool said = false;
@@ -14885,7 +14911,7 @@ void anUnsetClockSaysSoInsteadOfDrawing1970() {
 
 void everyExerciseRowAddsASetAndUndoIsOnlyThereToUse() {
   const workoutsui::ExerciseRow rows[] = {
-      {"Bench press", 4, 4}, {"Pull-ups", 3, 1}, {"Hanging leg raises to toes on the bar", 10, 0}};
+      {"Bench press", 4, 4, 60}, {"Pull-ups", 3, 1, 0}, {"Hanging leg raises to toes on the bar", 10, 0, 999}};
   workoutsui::ScheduleModel model;
   model.title = "Upper Body";
   model.rows = rows;
@@ -14894,12 +14920,36 @@ void everyExerciseRowAddsASetAndUndoIsOnlyThereToUse() {
   {
     Rendered out;
     build(out, [&](toybox::Screen& screen) { workoutsui::buildSchedule(screen, model); });
-    CHECK(countAction(out, workoutsui::ActionAddSet) == 3);
+    CHECK(rowsWith(out, workoutsui::ActionAddSet) == 3);
     CHECK(out.has(workoutsui::ActionDone));
     CHECK(!out.has(workoutsui::ActionUndo));
+    CHECK(!out.has(workoutsui::ActionReset));
     CHECK(drew(out, "DONE"));
-    CHECK(drew(out, "1/3"));
     CHECK(drew(out, "5/17"));
+    // Every row carries its weight between a - and a +.
+    CHECK(drew(out, "60 KG"));
+    CHECK(drew(out, "0 KG"));
+    CHECK(drew(out, "999 KG"));
+    CHECK(countAction(out, workoutsui::ActionWeightDown) == 3);
+    CHECK(countAction(out, workoutsui::ActionWeightUp) == 3);
+    // The buttons are their own targets: a tap on + moves the weight, never a
+    // set, and nothing the row draws overlaps them.
+    for (size_t i = 0; i < out.interactions.count(); ++i) {
+      const auto& hit = out.interactions.data()[i];
+      if (hit.action != workoutsui::ActionWeightUp && hit.action != workoutsui::ActionWeightDown) continue;
+      CHECK(hit.rect.width >= 44 && hit.rect.height >= 44);
+      CHECK(hit.rect.x + hit.rect.width <= 480 - 16);
+      const fui::ActionEvent e = out.tap(hit.rect.x + hit.rect.width / 2, hit.rect.y + hit.rect.height / 2);
+      CHECK(e.action == hit.action && e.value == hit.value);
+      for (size_t j = 0; j < out.interactions.count(); ++j) {
+        const auto& other = out.interactions.data()[j];
+        if (other.action != workoutsui::ActionAddSet) continue;
+        const bool apart =
+            other.rect.x + other.rect.width <= hit.rect.x || hit.rect.x + hit.rect.width <= other.rect.x ||
+            other.rect.y + other.rect.height <= hit.rect.y || hit.rect.y + hit.rect.height <= other.rect.y;
+        CHECK(apart);
+      }
+    }
     // A tap in the middle of the second row adds to the second exercise.
     bool hitsSecond = false;
     for (size_t i = 0; i < out.interactions.count(); ++i) {
@@ -14920,9 +14970,30 @@ void everyExerciseRowAddsASetAndUndoIsOnlyThereToUse() {
     CHECK(boxes == 4 + 3 + 10);
   }
   model.canUndo = true;
+  {
+    Rendered out;
+    build(out, [&](toybox::Screen& screen) { workoutsui::buildSchedule(screen, model); });
+    CHECK(out.has(workoutsui::ActionUndo));
+  }
+  // Finished, RESET takes UNDO's place on the right of the bar.
+  model.canReset = true;
   Rendered out;
   build(out, [&](toybox::Screen& screen) { workoutsui::buildSchedule(screen, model); });
-  CHECK(out.has(workoutsui::ActionUndo));
+  CHECK(out.has(workoutsui::ActionReset));
+  CHECK(!out.has(workoutsui::ActionUndo));
+  fui::Rect reset{};
+  for (size_t i = 0; i < out.interactions.count(); ++i) {
+    if (out.interactions.data()[i].action == workoutsui::ActionReset) reset = out.interactions.data()[i].rect;
+  }
+  // A second jab at RESET while the confirm paints lands on KEEP IT.
+  Rendered confirm;
+  build(confirm, [&](toybox::Screen& screen) {
+    workoutsui::buildResetConfirm(screen, "Upper Body", "Clear all 17 sets to go again? Today stays on your week.");
+  });
+  CHECK(confirm.has(workoutsui::ActionResetConfirm));
+  CHECK(confirm.tap(reset.x + reset.width / 2, reset.y + reset.height / 2).action == workoutsui::ActionResetKeep);
+  CHECK(drew(confirm, "KEEP IT"));
+  CHECK(drew(confirm, "RESET IT"));
 }
 
 void aLongScheduleIsPagedByTheSameCapacity() {
@@ -14936,7 +15007,7 @@ void aLongScheduleIsPagedByTheSameCapacity() {
   model.pageLabel = "1 / 3";
   Rendered out;
   build(out, [&](toybox::Screen& screen) { workoutsui::buildSchedule(screen, model); });
-  CHECK(countAction(out, workoutsui::ActionAddSet) == capacity);
+  CHECK(rowsWith(out, workoutsui::ActionAddSet) == capacity);
   CHECK(drew(out, "1 / 3"));
   // The last row ends above the action bar.
   for (size_t i = 0; i < out.interactions.count(); ++i) {
@@ -14962,7 +15033,7 @@ void thePhoneScreenReservesTheCodeAndLeavesOneWayOut() {
 
 int main() {
   workoutstest::theHomeScreenOpensEveryVisibleSchedule();
-  workoutstest::theWeekStripShowsSevenDaysEndingToday();
+  workoutstest::theCalendarShowsLastWeekAndThisFromMonday();
   workoutstest::anUnsetClockSaysSoInsteadOfDrawing1970();
   workoutstest::everyExerciseRowAddsASetAndUndoIsOnlyThereToUse();
   workoutstest::aLongScheduleIsPagedByTheSameCapacity();

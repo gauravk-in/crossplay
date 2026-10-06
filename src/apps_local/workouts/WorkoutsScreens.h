@@ -7,10 +7,11 @@
 // and what they made tappable.
 //
 // Two screens carry the app. The opening one is the schedules as cards, with
-// the last seven days pinned above the action bar so the week is the first
-// thing seen and the last thing left. The schedule itself is one row per
+// last week and this one pinned to the foot as a calendar, and the pencil on
+// the band that opens the phone page. The schedule itself is one row per
 // exercise with a box per set: the whole row is the target, because the person
-// tapping it is between sets and holding something heavy.
+// tapping it is between sets and holding something heavy. Only the weight's -
+// and + beside the boxes are kept out of it.
 
 #include <cstdint>
 
@@ -29,6 +30,11 @@ enum : fui::ActionId {
   ActionUndo = 623,
   ActionDone = 624,
   ActionDismiss = 625,
+  ActionWeightDown = 626,
+  ActionWeightUp = 627,
+  ActionReset = 628,
+  ActionResetConfirm = 629,
+  ActionResetKeep = 630,
 };
 
 // The mark for kIcons[index] at 24 or 32px. An index out of range draws the
@@ -51,10 +57,10 @@ struct HomeModel {
   int firstVisible = 0;
   // "1 / 2" when the schedules do not fit one page, drawn on the band.
   const char* pageLabel = nullptr;
-  // The strip needs a date. A device whose clock was never set draws the
-  // strip's frame with a line saying so, rather than seven days of 1970.
+  // The calendar needs a date. A device whose clock was never set draws the
+  // calendar's frame with a line saying so, rather than two weeks of 1970.
   bool clockSet = false;
-  workouts::WeekCell week[7];
+  workouts::WeekCell days[workouts::kCalendarDays];
 };
 
 void buildHome(toybox::Screen& screen, const HomeModel& model);
@@ -67,6 +73,7 @@ struct ExerciseRow {
   const char* name = "";
   int sets = 0;
   int done = 0;
+  int weight = 0;  // kg, drawn between the row's - and + beside its boxes
 };
 
 struct ScheduleModel {
@@ -81,10 +88,20 @@ struct ScheduleModel {
   // the right of the bar, the side that takes things away, and its half of the
   // bar is simply empty when there is nothing to take.
   bool canUndo = false;
+  // Every set ticked: RESET takes UNDO's place, since there is nothing left to
+  // tick and the likeliest next wish is to go again.
+  bool canReset = false;
 };
 
 void buildSchedule(toybox::Screen& screen, const ScheduleModel& model);
 int scheduleCapacity(const fui::DeviceContext& device);
+
+// --- The reset confirm --------------------------------------------------
+
+// KEEP IT occupies exactly the pixels RESET had on the schedule's bar, so a
+// second jab at RESET during the repaint keeps the sets. RESET IT sits where
+// DONE was, which never leads here.
+void buildResetConfirm(toybox::Screen& screen, const char* title, const char* prose);
 
 // --- The phone -----------------------------------------------------------
 

@@ -14,17 +14,21 @@
 // plain text so it can be fixed on a computer too:
 //
 //     = Upper Body | arms
-//     Bench press | 4
+//     Bench press | 4 | 60
 //     Pull-ups | 3
 //     = Lower Body | legs
 //     Squat | 5
+//
+// An exercise is `name | sets | kg`, the weight optional and whole kilograms.
+// The phone writes the starting weight and the reader's + and - rewrite it, so
+// the file always holds the weight last lifted.
 //
 // `today.txt` is how many sets of each exercise are done today. It belongs to
 // one day and is thrown away when the day changes, which is the whole of
 // "starting a new workout": there is no reset button because tomorrow is one.
 //
 // `log.txt` is one line per schedule trained per day, `day|icon|title`, and is
-// what the week strip on the opening screen is drawn from. Appended when the
+// what the calendar on the opening screen is drawn from. Appended when the
 // first set of a schedule is ticked, so a schedule opened and left untouched is
 // not a workout.
 //
@@ -42,6 +46,8 @@ namespace workouts {
 constexpr int kMaxSets = 10;
 constexpr int kMaxSchedules = 16;
 constexpr int kMaxExercises = 24;
+// Whole kilograms, the step the reader's + and - move by. 0 is no weight.
+constexpr int kMaxWeight = 999;
 constexpr size_t kMaxTitleBytes = 40;
 constexpr size_t kMaxExerciseBytes = 48;
 // The phone page is the only door bytes come through, and a page left open can
@@ -63,6 +69,7 @@ int iconIndex(const std::string& key);
 struct Exercise {
   std::string name;
   int sets = 3;
+  int weight = 0;  // kg; 0 for an exercise without one
 };
 
 struct Schedule {
@@ -112,6 +119,11 @@ Progress& progressFor(Today& today, const Schedule& schedule);
 bool addSet(Progress& progress, const Schedule& schedule, int index);
 // The undo: one fewer. False at zero.
 bool removeSet(Progress& progress, int index);
+// Every set of the schedule back to empty. False when nothing was ticked.
+bool resetProgress(Progress& progress);
+// `exercise`'s weight moved by `delta` kg, held to 0..kMaxWeight. False when it
+// was already at the limit it moved toward.
+bool adjustWeight(Exercise& exercise, int delta);
 
 // --- The log -------------------------------------------------------------
 
@@ -128,18 +140,23 @@ bool logged(const std::vector<LogEntry>& entries, int day, const std::string& ti
 // Removes the entry for (day, title). True when one was there.
 bool unlog(std::vector<LogEntry>& entries, int day, const std::string& title);
 
-// --- The week strip ------------------------------------------------------
+// --- The calendar --------------------------------------------------------
+
+// Last week and this one, Monday to Sunday: two rows that always start on a
+// Monday, so a weekday is always in the same column.
+constexpr int kCalendarDays = 14;
 
 struct WeekCell {
   int day = 0;
-  int weekday = 0;     // 0 Monday .. 6 Sunday
-  int dayOfMonth = 1;  // 1..31
-  int icon = -1;       // the last schedule trained that day; -1 for a rest day
-  int sessions = 0;    // how many schedules were trained that day
+  int weekday = 0;      // 0 Monday .. 6 Sunday
+  int dayOfMonth = 1;   // 1..31
+  int icon = -1;        // the last schedule trained that day; -1 for a rest day
+  int sessions = 0;     // how many schedules were trained that day
+  bool future = false;  // after today: nothing can be on it yet
 };
 
-// The seven days ending with `today`, oldest first.
-void weekCells(const std::vector<LogEntry>& entries, int today, WeekCell out[7]);
+// Monday of last week through Sunday of the week holding `today`.
+void calendarCells(const std::vector<LogEntry>& entries, int today, WeekCell out[kCalendarDays]);
 
 // Civil calendar arithmetic (Howard Hinnant's algorithms), so a day number
 // needs no libc and no timezone conversation.

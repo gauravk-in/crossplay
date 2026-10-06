@@ -115,6 +115,7 @@ void WorkoutsActivity::rebuildSchedule() {
     row.name = schedule.exercises[i].name.c_str();
     row.sets = schedule.exercises[i].sets;
     row.done = i < progress.done.size() ? progress.done[i] : 0;
+    row.weight = schedule.exercises[i].weight;
     rows_.push_back(row);
   }
   char tally[24];
@@ -164,6 +165,7 @@ void WorkoutsActivity::openSchedule(const int index) {
   open_ = index;
   scheduleTop_ = 0;
   undo_.clear();
+  loggedThisVisit_ = false;
   view_ = View::Schedule;
   rebuildSchedule();
   relabel();
@@ -215,6 +217,7 @@ void WorkoutsActivity::addSet(const int exercise) {
     entry.title = schedule.title;
     log_.push_back(entry);
     saveLog();
+    loggedThisVisit_ = true;
   }
   rebuildSchedule();
   // UNDO may have just appeared on the bar, so the table changes with the paint.
@@ -231,10 +234,64 @@ void WorkoutsActivity::undo() {
   if (!workouts::removeSet(progress, exercise)) return;
   saveToday();
   // Taken all the way back to nothing, it was never a workout.
-  if (progress.total() == 0 && today_.day >= 0 && workouts::unlog(log_, today_.day, schedule.title)) {
+  if (progress.total() == 0 && loggedThisVisit_ && today_.day >= 0 &&
+      workouts::unlog(log_, today_.day, schedule.title)) {
+    loggedThisVisit_ = false;
     saveLog();
   }
   rebuildSchedule();
+  interactionsReady_ = false;
+  requestUpdate();
+}
+
+// --- Weight and reset ---------------------------------------------------
+
+void WorkoutsActivity::adjustWeight(const int exercise, const int delta) {
+  if (open_ < 0 || open_ >= static_cast<int>(plan_.schedules.size())) return;
+  workouts::Schedule& schedule = plan_.schedules[static_cast<size_t>(open_)];
+  if (exercise < 0 || exercise >= static_cast<int>(schedule.exercises.size())) return;
+  workouts::Exercise& item = schedule.exercises[static_cast<size_t>(exercise)];
+  const int before = item.weight;
+  if (!workouts::adjustWeight(item, delta)) return;
+  // Into the plan itself, so the next session starts from it and the phone
+  // page shows it too.
+  if (!workouts::store::write(workouts::store::kPlanPath, workouts::formatPlan(plan_))) {
+    item.weight = before;
+    showNotice("The card would not take the change, so the weight was not saved.");
+    return;
+  }
+  rebuildSchedule();
+  interactionsReady_ = false;
+  requestUpdate();
+}
+
+void WorkoutsActivity::askReset() {
+  if (open_ < 0 || open_ >= static_cast<int>(plan_.schedules.size())) return;
+  const workouts::Schedule& schedule = plan_.schedules[static_cast<size_t>(open_)];
+  const int sets = workouts::progressFor(today_, schedule).total();
+  char prose[96];
+  std::snprintf(prose, sizeof(prose), "Clear all %d sets to go again? Today stays on your week.", sets);
+  confirm_ = prose;
+  view_ = View::ConfirmReset;
+  interactionsReady_ = false;
+  requestUpdate();
+}
+
+void WorkoutsActivity::reset() {
+  if (open_ < 0 || open_ >= static_cast<int>(plan_.schedules.size())) return;
+  const workouts::Schedule& schedule = plan_.schedules[static_cast<size_t>(open_)];
+  workouts::Progress& progress = workouts::progressFor(today_, schedule);
+  const std::vector<int> before = progress.done;
+  if (workouts::resetProgress(progress) && !saveToday()) {
+    progress.done = before;
+    showNotice("The card would not take the change, so nothing was reset.");
+    return;
+  }
+  undo_.clear();
+  loggedThisVisit_ = false;
+  view_ = View::Schedule;
+  rebuildSchedule();
+  relabel();
   interactionsReady_ = false;
   requestUpdate();
 }
@@ -332,6 +389,11 @@ void WorkoutsActivity::loop() {
         stopPhone();
         openHome();
         return;
+      case View::ConfirmReset:
+        view_ = View::Schedule;
+        interactionsReady_ = false;
+        requestUpdate();
+        return;
       case View::Schedule:
       case View::Notice:
         openHome();
@@ -391,6 +453,23 @@ void WorkoutsActivity::loop() {
     case workoutsui::ActionUndo:
       undo();
       return;
+    case workoutsui::ActionWeightDown:
+      adjustWeight(action.value, -1);
+      return;
+    case workoutsui::ActionWeightUp:
+      adjustWeight(action.value, 1);
+      return;
+    case workoutsui::ActionReset:
+      askReset();
+      return;
+    case workoutsui::ActionResetConfirm:
+      reset();
+      return;
+    case workoutsui::ActionResetKeep:
+      view_ = View::Schedule;
+      interactionsReady_ = false;
+      requestUpdate();
+      return;
     case workoutsui::ActionDone:
       openHome();
       return;
@@ -425,7 +504,7 @@ void WorkoutsActivity::render(RenderLock&&) {
       model.pageLabel = pageLabel_.empty() ? nullptr : pageLabel_.c_str();
       const int day = currentDay();
       model.clockSet = day >= 0;
-      if (model.clockSet) workouts::weekCells(log_, day, model.week);
+      if (model.clockSet) workouts::calendarCells(log_, day, model.days);
       workoutsui::buildHome(screen, model);
       break;
     }
@@ -440,9 +519,21 @@ void WorkoutsActivity::render(RenderLock&&) {
       model.pageLabel = pageLabel_.empty() ? nullptr : pageLabel_.c_str();
       model.tally = tally_.empty() ? nullptr : tally_.c_str();
       model.canUndo = !undo_.empty();
+      if (open_ >= 0 && open_ < static_cast<int>(plan_.schedules.size())) {
+        const workouts::Schedule& schedule = plan_.schedules[static_cast<size_t>(open_)];
+        const int total = schedule.totalSets();
+        model.canReset = total > 0 && workouts::progressFor(today_, schedule).total() >= total;
+      }
       workoutsui::buildSchedule(screen, model);
       break;
     }
+    case View::ConfirmReset:
+      workoutsui::buildResetConfirm(screen,
+                                    open_ >= 0 && open_ < static_cast<int>(plan_.schedules.size())
+                                        ? plan_.schedules[static_cast<size_t>(open_)].title.c_str()
+                                        : "WORKOUTS",
+                                    confirm_.c_str());
+      break;
     case View::Phone: {
       workoutsui::PhoneModel model;
       model.url = phoneUrl_.c_str();

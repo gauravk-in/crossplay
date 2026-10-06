@@ -14,8 +14,8 @@ std::string trim(const std::string& text) {
   return text.substr(start, stop - start);
 }
 
-// Splits "left | right" on the LAST bar, so a name can never be cut by the
-// count after it. A line with no bar is all left.
+// Splits a schedule line's "title | icon" on the LAST bar. A line with no bar
+// is all title.
 void splitBar(const std::string& line, std::string& left, std::string& right) {
   const size_t bar = line.rfind('|');
   if (bar == std::string::npos) {
@@ -39,6 +39,17 @@ int parseSets(const std::string& text) {
     if (value > kMaxSets) return kMaxSets;
   }
   return value < 1 ? 1 : value;
+}
+
+// Whole kilograms, clamped; anything that is not digits is no weight.
+int parseWeight(const std::string& text) {
+  int value = 0;
+  for (const char c : text) {
+    if (c < '0' || c > '9') return 0;
+    value = value * 10 + (c - '0');
+    if (value > kMaxWeight) return kMaxWeight;
+  }
+  return value;
 }
 
 bool parseInt(const std::string& text, int& out) {
@@ -135,14 +146,19 @@ Plan parsePlan(const std::string& text) {
     }
     if (current == nullptr || skipping) return;
     if (static_cast<int>(current->exercises.size()) >= kMaxExercises) return;
-    std::string name;
-    std::string sets;
-    splitBar(line, name, sets);
-    name = cleanName(name, kMaxExerciseBytes);
+    // Fields left to right: names cannot hold a bar, so the first one ends the
+    // name, and a plan written before weights existed reads with none.
+    const size_t first = line.find('|');
+    const size_t second = first == std::string::npos ? std::string::npos : line.find('|', first + 1);
+    const std::string name = cleanName(line.substr(0, first), kMaxExerciseBytes);
     if (name.empty()) return;
     Exercise exercise;
     exercise.name = name;
-    exercise.sets = parseSets(sets);
+    if (first != std::string::npos) {
+      exercise.sets =
+          parseSets(trim(line.substr(first + 1, second == std::string::npos ? std::string::npos : second - first - 1)));
+    }
+    if (second != std::string::npos) exercise.weight = parseWeight(trim(line.substr(second + 1)));
     current->exercises.push_back(exercise);
   });
   return plan;
@@ -157,12 +173,16 @@ std::string formatPlan(const Plan& plan) {
     out += kIcons[schedule.icon >= 0 && schedule.icon < kIconCount ? schedule.icon : 0];
     out += '\n';
     for (const Exercise& exercise : schedule.exercises) {
-      char sets[12];
-      std::snprintf(sets, sizeof(sets), "%d", exercise.sets);
+      char numbers[32];
+      // No weight is no third field, so a plan without weights is written
+      // exactly as it was before there were any.
+      if (exercise.weight > 0) {
+        std::snprintf(numbers, sizeof(numbers), " | %d | %d\n", exercise.sets, exercise.weight);
+      } else {
+        std::snprintf(numbers, sizeof(numbers), " | %d\n", exercise.sets);
+      }
       out += exercise.name;
-      out += " | ";
-      out += sets;
-      out += '\n';
+      out += numbers;
     }
   }
   return out;
@@ -269,6 +289,21 @@ bool removeSet(Progress& progress, const int index) {
   return true;
 }
 
+bool resetProgress(Progress& progress) {
+  if (progress.total() == 0) return false;
+  for (int& done : progress.done) done = 0;
+  return true;
+}
+
+bool adjustWeight(Exercise& exercise, const int delta) {
+  int next = exercise.weight + delta;
+  if (next < 0) next = 0;
+  if (next > kMaxWeight) next = kMaxWeight;
+  if (next == exercise.weight) return false;
+  exercise.weight = next;
+  return true;
+}
+
 // --- The log -------------------------------------------------------------
 
 std::vector<LogEntry> parseLog(const std::string& text) {
@@ -323,13 +358,15 @@ bool unlog(std::vector<LogEntry>& entries, const int day, const std::string& tit
   return false;
 }
 
-// --- The week strip ------------------------------------------------------
+// --- The calendar --------------------------------------------------------
 
-void weekCells(const std::vector<LogEntry>& entries, const int today, WeekCell out[7]) {
-  for (int i = 0; i < 7; i++) {
+void calendarCells(const std::vector<LogEntry>& entries, const int today, WeekCell out[kCalendarDays]) {
+  const int first = today - weekdayOf(today) - 7;
+  for (int i = 0; i < kCalendarDays; i++) {
     WeekCell& cell = out[i];
     cell = WeekCell{};
-    cell.day = today - 6 + i;
+    cell.day = first + i;
+    cell.future = cell.day > today;
     cell.weekday = weekdayOf(cell.day);
     int y = 0;
     int m = 0;

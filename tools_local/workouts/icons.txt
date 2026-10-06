@@ -20,3 +20,6 @@ w_swim     = waves-ladder
 w_hike     = mountain
 w_stretch  = person-standing
 w_power    = zap
+
+# The opening screen's one action, on the band: write the schedules on a phone.
+w_edit     = pencil

@@ -55,8 +55,9 @@ main{max-width:34rem;margin:0 auto;padding:1.6rem var(--gutter) 3rem}
 .icons button.on{background:var(--ink);color:var(--paper)}
 
 ul{list-style:none;margin:0;padding:0}
-li{display:flex;align-items:center;gap:.5rem;border-bottom:1px solid var(--edge);padding:.15rem .5rem .15rem .75rem}
-li input.name{flex:1 1 auto;min-width:0;font:inherit;color:var(--ink);background:transparent;border:0;border-radius:0;
+li{display:flex;flex-wrap:wrap;align-items:center;gap:0 .5rem;border-bottom:1px solid var(--edge);
+  padding:.15rem .5rem .4rem .75rem}
+li input.name{flex:1 0 100%;min-width:0;font:inherit;color:var(--ink);background:transparent;border:0;border-radius:0;
   padding:.6rem 0;outline-offset:2px}
 li.new input.name{background:var(--paper-2);padding-left:.5rem}
 .sets{flex:0 0 auto;display:flex;align-items:center;font-family:var(--mono);font-size:.85rem}
@@ -65,7 +66,11 @@ li.new input.name{background:var(--paper-2);padding-left:.5rem}
 .sets output{min-width:3.6rem;text-align:center;letter-spacing:.06em}
 .drop{flex:0 0 auto;font-family:var(--mono);font-size:.8rem;letter-spacing:.1em;color:var(--muted);
   background:transparent;border:0;padding:.5rem .3rem;cursor:pointer}
-li.new .sets,li.new .drop{visibility:hidden}
+li.new .sets,li.new .kg,li.new .drop{display:none}
+li.new{padding-bottom:.15rem}
+.kg{flex:0 0 auto;display:flex;align-items:center;gap:.3rem;font-family:var(--mono);font-size:.85rem;margin-left:auto}
+.kg input{width:3.6rem;font:inherit;text-align:right;color:var(--ink);background:var(--paper);
+  border:2px solid var(--ink);border-radius:0;padding:.35rem .4rem}
 
 .tools{display:flex;justify-content:space-between;padding:.4rem .5rem}
 .tools button{font-family:var(--mono);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);
@@ -110,7 +115,7 @@ var ICONS = [
 ];
 // The reader's limits (WorkoutsCore.h), so the page cannot offer what the
 // reader would quietly clamp.
-var MAX_SETS = 10, MAX_SCHEDULES = 16, MAX_EXERCISES = 24, MAX_TITLE = 40, MAX_NAME = 48;
+var MAX_SETS = 10, MAX_WEIGHT = 999, MAX_SCHEDULES = 16, MAX_EXERCISES = 24, MAX_TITLE = 40, MAX_NAME = 48;
 
 var listEl = document.getElementById('list');
 var addEl = document.getElementById('add');
@@ -134,7 +139,7 @@ function clean(text, max) {
 }
 
 // The reader's file format (WorkoutsCore.h): "= Title | icon", then
-// "Exercise | sets" lines under it.
+// "Exercise | sets | kg" lines under it, the weight optional.
 function parse(text) {
   var out = [], cur = null;
   text.split('\n').forEach(function (raw) {
@@ -150,8 +155,10 @@ function parse(text) {
       return;
     }
     if (!cur) return;
-    var n = parseInt(right, 10);
-    cur.exercises.push({ name: left, sets: isNaN(n) ? 3 : Math.max(1, Math.min(MAX_SETS, n)) });
+    var f = line.split('|').map(function (x) { return x.trim(); });
+    var n = parseInt(f[1], 10), kg = /^\d+$/.test(f[2] || '') ? parseInt(f[2], 10) : 0;
+    cur.exercises.push({ name: f[0], sets: isNaN(n) ? 3 : Math.max(1, Math.min(MAX_SETS, n)),
+      weight: Math.min(MAX_WEIGHT, kg) });
   });
   return out;
 }
@@ -165,7 +172,7 @@ function serialise() {
     out += '= ' + title + ' | ' + ICONS[s.icon][0] + '\n';
     s.exercises.forEach(function (e) {
       var name = clean(e.name, MAX_NAME);
-      if (name) out += name + ' | ' + e.sets + '\n';
+      if (name) out += name + ' | ' + e.sets + (e.weight > 0 ? ' | ' + e.weight : '') + '\n';
     });
   });
   return out;
@@ -198,6 +205,21 @@ function exerciseRow(s, ul, e, isNew) {
   less.onclick = function () { if (e.sets > 1) { e.sets--; show(); touched(); } };
   more.onclick = function () { if (e.sets < MAX_SETS) { e.sets++; show(); touched(); } };
   sets.appendChild(less); sets.appendChild(count); sets.appendChild(more);
+  // The starting weight. The reader's + and - move it from there, a kilogram a
+  // tap, and what it was last set to is what this shows next time.
+  var kg = document.createElement('label');
+  kg.className = 'kg';
+  var kgIn = document.createElement('input');
+  kgIn.type = 'number'; kgIn.inputMode = 'numeric'; kgIn.min = '0'; kgIn.max = String(MAX_WEIGHT); kgIn.step = '1';
+  kgIn.placeholder = '0';
+  kgIn.value = e.weight > 0 ? String(e.weight) : '';
+  kgIn.setAttribute('aria-label', 'Weight in kilograms');
+  kgIn.addEventListener('input', function () {
+    var v = parseInt(kgIn.value, 10);
+    e.weight = isNaN(v) || v < 0 ? 0 : Math.min(MAX_WEIGHT, v);
+    touched();
+  });
+  kg.appendChild(kgIn); kg.appendChild(document.createTextNode('kg'));
   var drop = document.createElement('button');
   drop.type = 'button'; drop.className = 'drop'; drop.textContent = 'X';
   drop.setAttribute('aria-label', 'Remove this exercise');
@@ -217,7 +239,7 @@ function exerciseRow(s, ul, e, isNew) {
     li.classList.remove('new');
     name.placeholder = '';
     s.exercises.push(e);
-    if (s.exercises.length < MAX_EXERCISES) exerciseRow(s, ul, { name: '', sets: 3 }, true);
+    if (s.exercises.length < MAX_EXERCISES) exerciseRow(s, ul, { name: '', sets: 3, weight: 0 }, true);
   });
   name.addEventListener('keydown', function (ev) {
     if (ev.key !== 'Enter') return;
@@ -225,7 +247,7 @@ function exerciseRow(s, ul, e, isNew) {
     var next = li.nextSibling && li.nextSibling.querySelector('input');
     if (next) next.focus();
   });
-  li.appendChild(name); li.appendChild(sets); li.appendChild(drop);
+  li.appendChild(name); li.appendChild(sets); li.appendChild(kg); li.appendChild(drop);
   ul.appendChild(li);
 }
 
@@ -264,7 +286,7 @@ function scheduleCard(s) {
 
   var ul = document.createElement('ul');
   s.exercises.forEach(function (e) { exerciseRow(s, ul, e, false); });
-  if (s.exercises.length < MAX_EXERCISES) exerciseRow(s, ul, { name: '', sets: 3 }, true);
+  if (s.exercises.length < MAX_EXERCISES) exerciseRow(s, ul, { name: '', sets: 3, weight: 0 }, true);
 
   var tools = document.createElement('div');
   tools.className = 'tools';

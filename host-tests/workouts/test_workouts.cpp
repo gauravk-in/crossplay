@@ -99,11 +99,65 @@ void aFullPlanFitsTheFileCap() {
   std::string text;
   for (int s = 0; s < kMaxSchedules; s++) {
     text += "= " + std::to_string(s) + std::string(kMaxTitleBytes, 'T') + " | stretch\n";
-    for (int e = 0; e < kMaxExercises; e++) text += std::string(kMaxExerciseBytes, 'E') + " | 10\n";
+    for (int e = 0; e < kMaxExercises; e++) text += std::string(kMaxExerciseBytes, 'E') + " | 10 | 999\n";
   }
   const std::string written = formatPlan(parsePlan(text));
   CHECK(written.size() <= kMaxPlanBytes);
   CHECK(static_cast<int>(parsePlan(written).schedules.size()) == kMaxSchedules);
+}
+
+void testWeights() {
+  const Plan plan = parsePlan(
+      "= Upper | arms\n"
+      "Bench press | 4 | 60\n"
+      "Pull-ups | 3\n"
+      "Curl | 3 | 12kg\n"
+      "Deadlift | 5 | 5000\n"
+      "Row || 40\n");
+  const std::vector<Exercise>& e = plan.schedules[0].exercises;
+  CHECK(e.size() == 5);
+  CHECK(e[0].name == "Bench press");
+  CHECK(e[0].sets == 4);
+  CHECK(e[0].weight == 60);
+  // A plan from before weights reads with none.
+  CHECK(e[1].weight == 0);
+  // Nonsense is no weight, not an error; too much is the most there can be.
+  CHECK(e[2].weight == 0);
+  CHECK(e[3].weight == kMaxWeight);
+  CHECK(e[4].sets == 3);
+  CHECK(e[4].weight == 40);
+  // No weight is no third field.
+  CHECK(formatPlan(plan) ==
+        "= Upper | arms\nBench press | 4 | 60\nPull-ups | 3\nCurl | 3\nDeadlift | 5 | 999\nRow | 3 | 40\n");
+
+  Exercise x;
+  x.weight = 1;
+  CHECK(adjustWeight(x, -1));
+  CHECK(x.weight == 0);
+  CHECK(!adjustWeight(x, -1));
+  CHECK(x.weight == 0);
+  CHECK(adjustWeight(x, 1));
+  CHECK(x.weight == 1);
+  x.weight = kMaxWeight;
+  CHECK(!adjustWeight(x, 1));
+  CHECK(x.weight == kMaxWeight);
+}
+
+void testReset() {
+  const Plan plan = parsePlan("= A | arms\nX | 2\nY | 1\n");
+  Today today;
+  today.day = 9;
+  Progress& a = progressFor(today, plan.schedules[0]);
+  CHECK(!resetProgress(a));
+  addSet(a, plan.schedules[0], 0);
+  addSet(a, plan.schedules[0], 0);
+  addSet(a, plan.schedules[0], 1);
+  CHECK(a.total() == 3);
+  CHECK(resetProgress(a));
+  CHECK(a.total() == 0);
+  CHECK(a.done.size() == 2);
+  // Reset and untouched since, it is not written at all.
+  CHECK(formatToday(today) == "day 9\n");
 }
 
 void testCleanName() {
@@ -214,28 +268,39 @@ void testCalendar() {
   CHECK(weekdayOf(-1) == 2);
 }
 
-void testWeek() {
+void testCalendar14() {
+  // 2026-10-06 is a Tuesday, so the two weeks are Mon 2026-09-28 .. Sun 2026-10-11.
   const int today = daysFromCivil(2026, 10, 6);
   std::vector<LogEntry> entries = parseLog(
-      "20720|arms|Old\n"  // more than a week ago
-      "20727|legs|Lower\n"
+      "20720|arms|Old\n"  // before the first Monday
+      "20724|legs|Lower\n"
       "20730|arms|Upper\n"
       "20730|cardio|Run\n"
       "20732|push|Push\n");
-  WeekCell cells[7];
-  weekCells(entries, today, cells);
-  CHECK(cells[0].day == today - 6);
-  CHECK(cells[6].day == today);
-  CHECK(cells[6].weekday == 1);
-  CHECK(cells[6].dayOfMonth == 6);
-  CHECK(cells[0].dayOfMonth == 30);  // 2026-09-30
-  CHECK(cells[0].icon == -1);
-  CHECK(cells[1].icon == iconIndex("legs"));
+  WeekCell cells[kCalendarDays];
+  calendarCells(entries, today, cells);
+  CHECK(cells[0].day == daysFromCivil(2026, 9, 28));
+  CHECK(cells[0].weekday == 0);
+  CHECK(cells[0].dayOfMonth == 28);
+  CHECK(cells[13].weekday == 6);
+  CHECK(cells[13].dayOfMonth == 11);
+  CHECK(cells[8].day == today);
+  CHECK(!cells[8].future);
+  CHECK(cells[9].future);
+  CHECK(cells[13].future);
+  CHECK(cells[0].icon == iconIndex("legs"));
   // Two schedules on one day: the later one is shown, and both are counted.
-  CHECK(cells[4].icon == iconIndex("cardio"));
-  CHECK(cells[4].sessions == 2);
-  CHECK(cells[6].icon == iconIndex("push"));
-  CHECK(cells[5].sessions == 0);
+  CHECK(cells[6].icon == iconIndex("cardio"));
+  CHECK(cells[6].sessions == 2);
+  CHECK(cells[8].icon == iconIndex("push"));
+  CHECK(cells[1].sessions == 0);
+  // On a Monday the first row is the whole of last week.
+  calendarCells(entries, daysFromCivil(2026, 10, 5), cells);
+  CHECK(cells[7].day == daysFromCivil(2026, 10, 5));
+  CHECK(cells[8].future);
+  // On a Sunday nothing is in the future.
+  calendarCells(entries, daysFromCivil(2026, 10, 11), cells);
+  CHECK(!cells[13].future);
 }
 
 }  // namespace
@@ -245,6 +310,8 @@ int main() {
   testUnknownIconAndDuplicates();
   testLimits();
   aFullPlanFitsTheFileCap();
+  testWeights();
+  testReset();
   testCleanName();
   testRoundTrip();
   testToday();
@@ -252,7 +319,7 @@ int main() {
   testTodayGarbage();
   testLog();
   testCalendar();
-  testWeek();
+  testCalendar14();
 
   std::printf("%s  workouts: %d checks, %d failed\n", failures ? "FAIL" : "ok  ", checks, failures);
   return failures == 0 ? 0 : 1;

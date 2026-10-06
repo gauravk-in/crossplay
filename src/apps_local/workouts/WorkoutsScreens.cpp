@@ -21,17 +21,21 @@ constexpr int16_t kCardPitch = kCardHeight + kCardGap;
 constexpr int16_t kBadgeSide = 76;
 constexpr int16_t kBarHeight = 12;
 
-// An exercise row: its name, then its boxes. Tall enough that the boxes are a
-// target in their own right, short enough for five a page.
+// An exercise row: its name, then its boxes beside its weight. Tall enough that the
+// boxes are a target in their own right, short enough for five a page.
 constexpr int16_t kExerciseRow = 112;
+// The weight's - and +, square.
+constexpr int16_t kStepSide = 48;
 constexpr int16_t kExerciseMax = 140;
 constexpr int16_t kSetBoxMax = 40;
 constexpr int16_t kSetBoxGap = 8;
 
-// The week strip: a caption, then seven cells of a day label over a square.
-constexpr int16_t kDaySquare = 52;
+// The calendar: a caption, then two weeks of seven cells, each a day label over
+// a square.
+constexpr int16_t kDaySquare = 44;
 constexpr int16_t kStripCaptionGap = 6;
 constexpr int16_t kCellLabelGap = 4;
+constexpr int16_t kWeekGap = 6;
 
 constexpr const char* kWeekdayLetters[7] = {"M", "T", "W", "T", "F", "S", "S"};
 
@@ -55,12 +59,23 @@ const fui::Paint kInk = fui::Paint::solid(fui::Color::Black);
 // component's rightLabel slot sits a small label on the title's line box, low
 // against the display cut's baseline. Its width is reserved so the title is
 // fitted to the room that is really left.
-void chrome(toybox::Screen& screen, const char* title, const char* counter = nullptr) {
+//
+// `edit` puts the pencil on the band's right, the opening screen's one action,
+// with the counter just left of it.
+void chrome(toybox::Screen& screen, const char* title, const char* counter = nullptr, const bool edit = false) {
   fui::HeaderProps header;
   header.title = title;
   header.titleText = screen.theme().titleText;
   header.titleText.font = toybox::kDisplayFont;
   header.borderEdges = fui::EdgesNone;
+  int16_t trailingW = 0;
+  if (edit) {
+    header.trailingIcon = fui::bitmapFromIcon(icon_w_edit_32);
+    header.trailingAction = ActionUsePhone;
+    header.trailingStyles = toybox::rowStyles();
+    // The component's own button width and gap (headerTitleWidth()).
+    trailingW = static_cast<int16_t>(screen.theme().headerHeight - 8 + 8);
+  }
   fui::TextStyle counterStyle;
   counterStyle.font = toybox::kUiFont;
   counterStyle.align = fui::TextAlign::Right;
@@ -72,7 +87,7 @@ void chrome(toybox::Screen& screen, const char* title, const char* counter = nul
   toybox::absoluteChrome(screen);
   toybox::headerBand(screen, header);
   if (counter != nullptr) {
-    const int16_t right = static_cast<int16_t>(screen.device().width - toybox::kMargin);
+    const int16_t right = static_cast<int16_t>(screen.device().width - toybox::kMargin - trailingW);
     const fui::Rect box =
         fui::makeRect(0, toybox::bandCenterY(screen, toybox::kUiCut.inkHeight), right, toybox::kUiCut.inkHeight);
     screen.target().text(toybox::inkCentred(box, toybox::kUiCut), counter, counterStyle);
@@ -167,26 +182,27 @@ void progressBar(toybox::Screen& screen, const fui::Rect& box, const int done, c
 
 // --- Home geometry, shared by drawing and capacity ------------------------
 
+int16_t weekRowHeight(const int16_t tileLine) { return static_cast<int16_t>(tileLine + kCellLabelGap + kDaySquare); }
+
 int16_t stripHeight(const int16_t tileLine) {
-  return static_cast<int16_t>(tileLine + kStripCaptionGap + tileLine + kCellLabelGap + kDaySquare);
+  return static_cast<int16_t>(tileLine + kStripCaptionGap + weekRowHeight(tileLine) * 2 + kWeekGap);
 }
 
 struct HomeGeometry {
   fui::Rect cards;
   fui::Rect strip;
-  fui::Rect footer;
 };
 
 HomeGeometry homeGeometry(const fui::DeviceContext& device, const int16_t tileLine) {
   HomeGeometry g;
-  g.footer = footerBand(device);
+  const int16_t width = static_cast<int16_t>(device.width - 2 * toybox::kMargin);
   const int16_t stripH = stripHeight(tileLine);
-  const int16_t stripY = static_cast<int16_t>(g.footer.y - toybox::kGutter * 2 - stripH);
-  g.strip = fui::makeRect(g.footer.x, stripY, g.footer.width, stripH);
-  // The cards stop a rule's width above the strip, with a gutter either side
-  // of it, so the week reads as its own panel rather than one more card.
+  const int16_t stripY = static_cast<int16_t>(device.height - toybox::kMargin - stripH);
+  g.strip = fui::makeRect(toybox::kMargin, stripY, width, stripH);
+  // The cards stop a rule's width above the calendar, with a gutter either side
+  // of it, so the weeks read as their own panel rather than one more card.
   const int16_t cardsBottom = static_cast<int16_t>(stripY - toybox::kGutter * 2 - toybox::kRule);
-  g.cards = fui::makeRect(g.footer.x, static_cast<int16_t>(toybox::kBodyTop), g.footer.width,
+  g.cards = fui::makeRect(toybox::kMargin, static_cast<int16_t>(toybox::kBodyTop), width,
                           static_cast<int16_t>(cardsBottom - toybox::kBodyTop));
   return g;
 }
@@ -237,8 +253,8 @@ void card(toybox::Screen& screen, const fui::Rect& box, const ScheduleCard& item
   rowHit(screen, box, ActionOpenSchedule, index);
 }
 
-void weekStrip(toybox::Screen& screen, const fui::Rect& strip, const HomeModel& model) {
-  // A rule across the top: the week is a panel of its own, not a sixth card.
+void calendar(toybox::Screen& screen, const fui::Rect& strip, const HomeModel& model) {
+  // A rule across the top: the weeks are a panel of their own, not one more card.
   screen.target().fill(fui::makeRect(strip.x, static_cast<int16_t>(strip.y - toybox::kGutter - toybox::kRule),
                                      strip.width, toybox::kRule),
                        kInk);
@@ -247,9 +263,9 @@ void weekStrip(toybox::Screen& screen, const fui::Rect& strip, const HomeModel& 
   const int16_t tileLine = screen.target().lineHeight(small.font);
   int trained = 0;
   if (model.clockSet) {
-    for (const workouts::WeekCell& cell : model.week) trained += cell.icon >= 0 ? 1 : 0;
+    for (const workouts::WeekCell& cell : model.days) trained += cell.icon >= 0 ? 1 : 0;
   }
-  screen.target().text(fui::makeRect(strip.x, strip.y, strip.width, tileLine), "LAST 7 DAYS", small);
+  screen.target().text(fui::makeRect(strip.x, strip.y, strip.width, tileLine), "LAST WEEK AND THIS", small);
   if (model.clockSet) {
     char count[24];
     std::snprintf(count, sizeof(count), "%d %s", trained, trained == 1 ? "DAY TRAINED" : "DAYS TRAINED");
@@ -268,31 +284,43 @@ void weekStrip(toybox::Screen& screen, const fui::Rect& strip, const HomeModel& 
     return;
   }
 
-  // Seven columns, the squares centred in each so the gaps come out even
-  // whatever the panel's width divides into.
+  // Seven columns, Monday first, the squares centred in each so the gaps come
+  // out even whatever the panel's width divides into.
   const int16_t column = static_cast<int16_t>(strip.width / 7);
   const int16_t squareSide = column - 6 < kDaySquare ? static_cast<int16_t>(column - 6) : kDaySquare;
-  for (int i = 0; i < 7; i++) {
-    const workouts::WeekCell& cell = model.week[i];
-    const bool today = i == 6;
-    const int16_t colX = static_cast<int16_t>(strip.x + i * column);
+  const int16_t rowPitch = static_cast<int16_t>(weekRowHeight(tileLine) + kWeekGap);
+  for (int i = 0; i < workouts::kCalendarDays; i++) {
+    const workouts::WeekCell& cell = model.days[i];
+    const int16_t colX = static_cast<int16_t>(strip.x + (i % 7) * column);
+    const int16_t rowY = static_cast<int16_t>(cellsY + (i / 7) * rowPitch);
     char label[12];
     std::snprintf(label, sizeof(label), "%s %d", kWeekdayLetters[cell.weekday % 7], cell.dayOfMonth);
-    screen.target().text(fui::makeRect(colX, cellsY, column, tileLine), label,
+    screen.target().text(fui::makeRect(colX, rowY, column, tileLine), label,
                          plain(toybox::kTileFont, fui::TextAlign::Center));
     const fui::Rect square =
         fui::makeRect(static_cast<int16_t>(colX + (column - squareSide) / 2),
-                      static_cast<int16_t>(cellsY + tileLine + kCellLabelGap), squareSide, squareSide);
+                      static_cast<int16_t>(rowY + tileLine + kCellLabelGap), squareSide, squareSide);
     if (cell.icon >= 0) {
-      // A trained day is the solid one: at arm's length the week is read as
+      // A trained day is the solid one: at arm's length the weeks are read as
       // black squares and white squares before any mark is made out.
       screen.target().fill(square, kInk, 0);
       icon(screen, square, scheduleIcon(cell.icon, true), fui::Color::White);
+    } else if (cell.future) {
+      // Days still to come are only marked at their corners, so the empty
+      // squares that count -- the days that went by untrained -- stand out.
+      const int16_t tick = 8;
+      const int16_t x2 = static_cast<int16_t>(square.x + square.width - tick);
+      const int16_t y2 = static_cast<int16_t>(square.y + square.height - toybox::kHairline);
+      screen.target().fill(fui::makeRect(square.x, square.y, tick, toybox::kHairline), kInk);
+      screen.target().fill(fui::makeRect(x2, square.y, tick, toybox::kHairline), kInk);
+      screen.target().fill(fui::makeRect(square.x, y2, tick, toybox::kHairline), kInk);
+      screen.target().fill(fui::makeRect(x2, y2, tick, toybox::kHairline), kInk);
     } else {
       screen.target().stroke(square, kInk, toybox::kHairline, 0);
     }
-    // Today wears a heavier frame, trained or not, so the strip says where
+    // Today wears a heavier frame, trained or not, so the calendar says where
     // "now" is without a word.
+    const bool today = !cell.future && (i + 1 == workouts::kCalendarDays || model.days[i + 1].future);
     if (today) {
       const fui::Rect frame =
           fui::makeRect(static_cast<int16_t>(square.x - 4), static_cast<int16_t>(square.y - 4),
@@ -315,46 +343,79 @@ int exercisesVisible(const fui::Rect& band) {
   return visible < 1 ? 1 : visible;
 }
 
+// The row's own target, everywhere the weight's buttons are not. A piece too
+// short for a finger is left out: a button grows a short target to a finger's
+// height, which would reach over - and +.
+void rowHitAround(toybox::Screen& screen, const fui::Rect& row, const fui::Rect& stepper, const int index) {
+  constexpr int16_t kFinger = 44;
+  rowHit(screen, fui::makeRect(row.x, row.y, static_cast<int16_t>(stepper.x - row.x), row.height), ActionAddSet, index);
+  const int16_t right = static_cast<int16_t>(row.x + row.width - stepper.x);
+  const int16_t aboveH = static_cast<int16_t>(stepper.y - row.y);
+  if (aboveH >= kFinger) rowHit(screen, fui::makeRect(stepper.x, row.y, right, aboveH), ActionAddSet, index);
+  const int16_t below = static_cast<int16_t>(stepper.y + stepper.height);
+  const int16_t belowH = static_cast<int16_t>(row.y + row.height - below);
+  if (belowH >= kFinger) rowHit(screen, fui::makeRect(stepper.x, below, right, belowH), ActionAddSet, index);
+}
+
+void stepButton(toybox::Screen& screen, const fui::Rect& box, const char* label, const fui::ActionId action,
+                const int index) {
+  fui::ButtonProps button;
+  button.label = label;
+  button.action = action;
+  button.value = static_cast<int16_t>(index);
+  button.styles = toybox::rowStyles();
+  screen.button(button, box);
+}
+
 void exerciseRow(toybox::Screen& screen, const fui::Rect& row, const ExerciseRow& item, const int index,
                  const bool last) {
   const int16_t nameLine = screen.target().lineHeight(toybox::kBodyFont);
-  const int16_t tallyLine = screen.target().lineHeight(toybox::kTileFont);
+  // The second line: the boxes on the left, the weight on the right as - , the
+  // kilograms, +. The label is sized for the widest weight there can be, so
+  // the buttons never move under a finger as the number grows a digit.
+  fui::TextStyle weightStyle = plain(toybox::kUiFont, fui::TextAlign::Center);
+  const int16_t labelW = static_cast<int16_t>(
+      screen.target().measureText(weightStyle.font, "999 KG", weightStyle).width + toybox::kGutter);
+  const int16_t stepperW = static_cast<int16_t>(kStepSide * 2 + labelW);
+  const int16_t boxRoom = static_cast<int16_t>(row.width - stepperW - toybox::kGutter);
+
   const int sets = item.sets < 1 ? 1 : item.sets;
-  // Boxes shrink only when a long scheme would not fit a row at full size.
-  int16_t side = static_cast<int16_t>((row.width - (sets - 1) * kSetBoxGap) / sets);
+  // Boxes shrink only when a long scheme would not fit beside the weight.
+  int16_t side = static_cast<int16_t>((boxRoom - (sets - 1) * kSetBoxGap) / sets);
   if (side > kSetBoxMax) side = kSetBoxMax;
-  const int16_t block = static_cast<int16_t>(nameLine + toybox::kGutter / 2 + side);
+  const int16_t block = static_cast<int16_t>(nameLine + toybox::kGutter / 2 + kStepSide);
   const int16_t top = static_cast<int16_t>(row.y + (row.height - block) / 2);
+  const int16_t lineTwo = static_cast<int16_t>(top + nameLine + toybox::kGutter / 2);
 
-  // The tally sits right of the name, so the name gets what is left.
-  char tally[24];
-  const bool complete = item.done >= item.sets;
-  if (complete) {
-    std::snprintf(tally, sizeof(tally), "DONE");
-  } else {
-    std::snprintf(tally, sizeof(tally), "%d/%d", item.done, item.sets);
-  }
-  fui::TextStyle tallyStyle = plain(toybox::kTileFont, fui::TextAlign::Right);
-  const int16_t tallyW = static_cast<int16_t>(screen.target().measureText(tallyStyle.font, tally, tallyStyle).width);
-  screen.target().text(
-      fui::makeRect(row.x, static_cast<int16_t>(top + (nameLine - tallyLine) / 2), row.width, tallyLine), tally,
-      tallyStyle);
-  const int16_t nameW = static_cast<int16_t>(row.width - tallyW - toybox::kGutter);
-  fittedLine(screen, fui::makeRect(row.x, top, nameW, nameLine), item.name, fui::TextAlign::Left, toybox::kBodyFont);
+  // The name has the whole first line.
+  fittedLine(screen, fui::makeRect(row.x, top, row.width, nameLine), item.name, fui::TextAlign::Left,
+             toybox::kBodyFont);
 
-  const int16_t boxY = static_cast<int16_t>(top + nameLine + toybox::kGutter / 2);
+  const fui::Rect stepper =
+      fui::makeRect(static_cast<int16_t>(row.x + row.width - stepperW), lineTwo, stepperW, kStepSide);
+  rowHitAround(screen, row, stepper, index);
+  stepButton(screen, fui::makeRect(stepper.x, stepper.y, kStepSide, kStepSide), "-", ActionWeightDown, index);
+  stepButton(
+      screen,
+      fui::makeRect(static_cast<int16_t>(stepper.x + stepper.width - kStepSide), stepper.y, kStepSide, kStepSide), "+",
+      ActionWeightUp, index);
+  char weight[16];
+  std::snprintf(weight, sizeof(weight), "%d KG", item.weight);
+  const fui::Rect labelBox = fui::makeRect(static_cast<int16_t>(stepper.x + kStepSide), stepper.y, labelW, kStepSide);
+  screen.target().text(toybox::inkCentred(labelBox, toybox::kUiCut), weight, weightStyle);
+
+  const int16_t boxY = static_cast<int16_t>(lineTwo + (kStepSide - side) / 2);
   for (int s = 0; s < sets; s++) {
     const fui::Rect box = fui::makeRect(static_cast<int16_t>(row.x + s * (side + kSetBoxGap)), boxY, side, side);
     screen.target().stroke(box, kInk, toybox::kRule, 4);
     if (s < item.done) {
-      const int16_t inset = side >= 32 ? 8 : 6;
+      const int16_t inset = side >= 32 ? 8 : (side >= 20 ? 5 : 4);
       screen.target().fill(
           fui::makeRect(static_cast<int16_t>(box.x + inset), static_cast<int16_t>(box.y + inset),
                         static_cast<int16_t>(box.width - 2 * inset), static_cast<int16_t>(box.height - 2 * inset)),
           kInk, 2);
     }
   }
-  rowHit(screen, row, ActionAddSet, index);
   if (!last) separator(screen, row);
 }
 
@@ -383,18 +444,15 @@ void buildHome(toybox::Screen& screen, const HomeModel& model) {
   // The page count rides on the band, where the shelf's own folders put it:
   // the cards fill their band exactly, and a label under them sat on the last
   // card's second line.
-  chrome(screen, "WORKOUTS", model.pageLabel);
+  // The phone is where schedules are written, and the pencil on the band is
+  // the way there, for the empty app and the full one alike.
+  chrome(screen, "WORKOUTS", model.pageLabel, true);
   const fui::DeviceContext& device = screen.device();
   const HomeGeometry g = homeGeometry(device, screen.target().lineHeight(toybox::kTileFont));
-
-  // One action, full width. The phone is where schedules are written, so the
-  // empty app and the full one offer the same door with a different word.
-  footerButton(screen, g.footer, model.count == 0 ? "SET UP ON YOUR PHONE" : "EDIT ON YOUR PHONE", ActionUsePhone,
-               false);
-  weekStrip(screen, g.strip, model);
+  calendar(screen, g.strip, model);
 
   if (model.count == 0) {
-    centredNotice(screen, g.cards, "No workouts yet. Write your schedules on your phone, then tick sets off here.", 4);
+    centredNotice(screen, g.cards, "No workouts yet. Tap the pencil to write your schedules on your phone.", 4);
     return;
   }
   const int visible = cardsVisible(g.cards);
@@ -419,10 +477,12 @@ void buildSchedule(toybox::Screen& screen, const ScheduleModel& model) {
   const fui::Rect footer = footerBand(device);
   const int16_t half = static_cast<int16_t>((footer.width - toybox::kGutter) / 2);
   footerButton(screen, fui::makeRect(footer.x, footer.y, half, footer.height), "DONE", ActionDone, false);
-  if (model.canUndo) {
-    footerButton(screen,
-                 fui::makeRect(static_cast<int16_t>(footer.x + half + toybox::kGutter), footer.y, half, footer.height),
-                 "UNDO", ActionUndo, true);
+  const fui::Rect right =
+      fui::makeRect(static_cast<int16_t>(footer.x + half + toybox::kGutter), footer.y, half, footer.height);
+  if (model.canReset) {
+    footerButton(screen, right, "RESET", ActionReset, true);
+  } else if (model.canUndo) {
+    footerButton(screen, right, "UNDO", ActionUndo, true);
   }
 
   if (model.count == 0) {
@@ -444,6 +504,22 @@ void buildSchedule(toybox::Screen& screen, const ScheduleModel& model) {
     y = static_cast<int16_t>(y + pitch);
   }
   pageLabel(screen, band, model.pageLabel);
+}
+
+// --- The reset confirm --------------------------------------------------
+
+void buildResetConfirm(toybox::Screen& screen, const char* title, const char* prose) {
+  chrome(screen, title);
+  const fui::DeviceContext& device = screen.device();
+  const fui::Rect footer = footerBand(device);
+  const fui::Rect band = fui::makeRect(footer.x, static_cast<int16_t>(toybox::kBodyTop), footer.width,
+                                       static_cast<int16_t>(footer.y - toybox::kGutter * 2 - toybox::kBodyTop));
+  centredNotice(screen, band, prose, 5);
+  const int16_t half = static_cast<int16_t>((footer.width - toybox::kGutter) / 2);
+  footerButton(screen, fui::makeRect(footer.x, footer.y, half, footer.height), "RESET IT", ActionResetConfirm, true);
+  footerButton(screen,
+               fui::makeRect(static_cast<int16_t>(footer.x + half + toybox::kGutter), footer.y, half, footer.height),
+               "KEEP IT", ActionResetKeep, false);
 }
 
 // --- The phone -----------------------------------------------------------
