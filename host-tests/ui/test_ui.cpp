@@ -14988,7 +14988,7 @@ void everyExerciseRowAddsASetAndUndoIsOnlyThereToUse() {
   // A second jab at RESET while the confirm paints lands on KEEP IT.
   Rendered confirm;
   build(confirm, [&](toybox::Screen& screen) {
-    workoutsui::buildResetConfirm(screen, "Upper Body", "Clear all 17 sets to go again? Today stays on your week.");
+    workoutsui::buildResetConfirm(screen, "Upper Body", "Clear all 17 sets and take today off the calendar?");
   });
   CHECK(confirm.has(workoutsui::ActionResetConfirm));
   CHECK(confirm.tap(reset.x + reset.width / 2, reset.y + reset.height / 2).action == workoutsui::ActionResetKeep);

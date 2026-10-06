@@ -270,7 +270,7 @@ void WorkoutsActivity::askReset() {
   const workouts::Schedule& schedule = plan_.schedules[static_cast<size_t>(open_)];
   const int sets = workouts::progressFor(today_, schedule).total();
   char prose[96];
-  std::snprintf(prose, sizeof(prose), "Clear all %d sets to go again? Today stays on your week.", sets);
+  std::snprintf(prose, sizeof(prose), "Clear all %d sets and take today off the calendar?", sets);
   confirm_ = prose;
   view_ = View::ConfirmReset;
   interactionsReady_ = false;
@@ -287,6 +287,9 @@ void WorkoutsActivity::reset() {
     showNotice("The card would not take the change, so nothing was reset.");
     return;
   }
+  // A reset workout was not done, so today loses its mark until a set is
+  // ticked again.
+  if (today_.day >= 0 && workouts::unlog(log_, today_.day, schedule.title)) saveLog();
   undo_.clear();
   loggedThisVisit_ = false;
   view_ = View::Schedule;

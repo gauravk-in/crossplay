@@ -79,8 +79,8 @@ class WorkoutsActivity final : public Activity {
   // the person no longer remembers ticking.
   std::vector<int> undo_;
   // This visit wrote today's line in the log. Only then does undoing back to
-  // nothing take the day off the week strip: after a RESET the line belongs to
-  // the workout that was finished, and a second round undone does not erase it.
+  // nothing take the day off the calendar, so UNDO never erases a workout
+  // logged on an earlier visit. RESET removes the line itself.
   bool loggedThisVisit_ = false;
 
   // Row storage the screens point into, rebuilt when the data changes.

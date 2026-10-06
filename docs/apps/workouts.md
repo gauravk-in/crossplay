@@ -23,7 +23,8 @@ it a kilogram a tap. The change is saved into the plan at once, so the next
 session starts from the weight last lifted and the phone page shows it too.
 
 Once every set is ticked, **RESET** takes UNDO's place. It asks first, and
-**RESET IT** clears the boxes to go again; the day stays on the calendar.
+**RESET IT** clears the boxes and takes the schedule's mark off today on the
+calendar, until a set is ticked again.
 
 The opening screen keeps last week and this one at the foot, Monday to Sunday,
 today in the heavier frame and the days still to come marked only at their
