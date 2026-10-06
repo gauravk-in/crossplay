@@ -157,7 +157,7 @@ std::string formatPlan(const Plan& plan) {
     out += kIcons[schedule.icon >= 0 && schedule.icon < kIconCount ? schedule.icon : 0];
     out += '\n';
     for (const Exercise& exercise : schedule.exercises) {
-      char sets[8];
+      char sets[12];
       std::snprintf(sets, sizeof(sets), "%d", exercise.sets);
       out += exercise.name;
       out += " | ";

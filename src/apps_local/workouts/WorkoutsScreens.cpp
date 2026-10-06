@@ -327,7 +327,7 @@ void exerciseRow(toybox::Screen& screen, const fui::Rect& row, const ExerciseRow
   const int16_t top = static_cast<int16_t>(row.y + (row.height - block) / 2);
 
   // The tally sits right of the name, so the name gets what is left.
-  char tally[16];
+  char tally[24];
   const bool complete = item.done >= item.sets;
   if (complete) {
     std::snprintf(tally, sizeof(tally), "DONE");
