@@ -96,13 +96,14 @@ void buildLists(toybox::Screen& screen, const ListsModel& model);
 // --- Settings --------------------------------------------------------------
 
 struct SettingsModel {
-  const char* pollLabel = "";   // "EVERY MIN"
-  const char* sleepLabel = "";  // "OFF", or the list on the sleep screen
+  const char* showLabel = "ALL";  // "ALL" or "DUE TODAY"
+  const char* pollLabel = "";     // "EVERY MIN"
+  const char* sleepLabel = "";    // "OFF", or the list on the sleep screen
   bool signedIn = false;
 };
 
 // The rows. ActionSettingRow carries the value, not the position.
-enum class SettingRow : uint8_t { Poll, Sleep, SignOut };
+enum class SettingRow : uint8_t { Poll, Sleep, SignOut, Show };
 
 void buildSettings(toybox::Screen& screen, const SettingsModel& model);
 

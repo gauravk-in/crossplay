@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 
 #include "../../network/DeviceReportCore.h"
 
@@ -58,9 +59,12 @@ std::string flatten(const std::string& s) {
   return out;
 }
 
-bool positionLess(const Task& a, const Task& b) {
-  // Google's positions are equal-length digit strings, so this is numeric
-  // order. Ties fall back to the title so a reload never reshuffles.
+bool displayLess(const Task& a, const Task& b) {
+  // Undated first, then by due date ("YYYY-MM-DD" sorts as a string). Within a
+  // date, Google's positions, which are equal-length digit strings, so this is
+  // numeric order. Ties fall back to the title so a reload never reshuffles.
+  if (a.due.empty() != b.due.empty()) return a.due.empty();
+  if (a.due != b.due) return a.due < b.due;
   if (a.position != b.position) return a.position < b.position;
   return a.title < b.title;
 }
@@ -391,8 +395,8 @@ void sortForDisplay(std::vector<Task>& tasks) {
       parents.push_back(std::move(t));
     }
   }
-  std::stable_sort(parents.begin(), parents.end(), positionLess);
-  std::stable_sort(children.begin(), children.end(), positionLess);
+  std::stable_sort(parents.begin(), parents.end(), displayLess);
+  std::stable_sort(children.begin(), children.end(), displayLess);
   std::vector<Task> out;
   out.reserve(parents.size() + children.size());
   for (Task& p : parents) {
@@ -403,6 +407,39 @@ void sortForDisplay(std::vector<Task>& tasks) {
     }
   }
   tasks = std::move(out);
+}
+
+bool dueBy(const Task& task, const std::string& today) { return task.due.empty() || task.due <= today; }
+
+std::vector<int> visibleRows(const std::vector<Task>& tasks, const std::string& today) {
+  std::vector<int> out;
+  out.reserve(tasks.size());
+  for (size_t i = 0; i < tasks.size(); ++i) {
+    const Task& t = tasks[i];
+    bool shown = today.empty() || dueBy(t, today);
+    // A parent stays for a child that is shown, or the child would be drawn
+    // indented under nothing.
+    if (!shown && !isChild(t, tasks)) {
+      for (const Task& c : tasks) {
+        if (c.parent == t.id && dueBy(c, today)) {
+          shown = true;
+          break;
+        }
+      }
+    }
+    if (shown) out.push_back(static_cast<int>(i));
+  }
+  return out;
+}
+
+std::string localDate(const int64_t epoch) {
+  if (epoch < kClockFloor) return std::string();
+  const time_t when = static_cast<time_t>(epoch);
+  struct tm parts{};
+  localtime_r(&when, &parts);
+  char out[40];
+  std::snprintf(out, sizeof(out), "%04d-%02d-%02d", parts.tm_year + 1900, parts.tm_mon + 1, parts.tm_mday);
+  return out;
 }
 
 std::vector<Task> merge(const std::vector<Task>& local, const std::vector<Task>& fresh) {
@@ -459,8 +496,14 @@ Settings parseSettings(const std::string& text) {
   for (const std::string& raw : lines(text)) {
     const std::string line = trim(raw);
     const size_t eq = line.find('=');
-    if (eq == std::string::npos || trim(line.substr(0, eq)) != "poll_minutes") continue;
+    if (eq == std::string::npos) continue;
+    const std::string key = trim(line.substr(0, eq));
     const std::string value = trim(line.substr(eq + 1));
+    if (key == "today_only") {
+      out.todayOnly = value == "1";
+      continue;
+    }
+    if (key != "poll_minutes") continue;
     if (value.empty() || value.size() > 4 || value.find_first_not_of("0123456789") != std::string::npos) continue;
     const int minutes = std::atoi(value.c_str());
     if (isKnownChoice(static_cast<uint16_t>(minutes))) out.pollMinutes = static_cast<uint16_t>(minutes);
@@ -469,7 +512,8 @@ Settings parseSettings(const std::string& text) {
 }
 
 std::string serializeSettings(const Settings& settings) {
-  return "poll_minutes=" + std::to_string(settings.pollMinutes) + "\n";
+  return "poll_minutes=" + std::to_string(settings.pollMinutes) + "\ntoday_only=" + (settings.todayOnly ? "1" : "0") +
+         "\n";
 }
 
 uint16_t nextPollMinutes(const uint16_t minutes) {

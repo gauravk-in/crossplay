@@ -72,6 +72,11 @@ verified, which a personal client can click through.
   the list actually changed. Off the charger nothing polls and the reader
   sleeps as usual.
 - **The gear** opens settings:
+  - **SHOW**: **ALL**, or **DUE TODAY**, which keeps tasks due today, overdue
+    tasks, and tasks with no due date. A parent stays on screen when one of its
+    subtasks does. "Today" comes from the reader's clock; on a reader whose
+    clock has never been set, every task shows. The sleep screen follows this
+    setting too, as of the moment the reader went to sleep.
   - **AUTO SYNC**: how often to check on the charger (every 1, 2, 5, 10, 15,
     30 or 60 minutes, or off).
   - **SLEEP SCREEN**: tap it to put the list on screen on the panel while the
@@ -87,7 +92,9 @@ verified, which a personal client can click through.
     up.
 - The side keys page a long list.
 
-Completed tasks are not shown. Subtasks are indented under their parent.
+Completed tasks are not shown. Tasks with no due date come first, in Google's
+order, then dated tasks from the soonest due. Subtasks are indented under their
+parent and sorted the same way among themselves.
 
 ## On the card
 
@@ -99,7 +106,7 @@ Completed tasks are not shown. Subtasks are indented under their parent.
 | `client.cfg`   | the Google OAuth client (see above), unless it is built in         |
 | `lists.tsv`    | every list's id, title and open count as last synced               |
 | `list-<id>.tsv`| one list's tasks as last synced, plus ticks not yet sent           |
-| `settings.cfg` | `poll_minutes=N`                                                   |
+| `settings.cfg` | `poll_minutes=N`, `today_only=0\|1`                                |
 | `meta.cfg`     | the list on screen and when the lists last synced                  |
 | `asleep.cfg`   | the list on the sleep screen, and the sleep settings it replaced   |
 | `.roots.pem`   | optional: CA roots that override the built-in bundle               |

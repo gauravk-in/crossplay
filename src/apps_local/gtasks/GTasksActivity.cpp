@@ -500,9 +500,16 @@ void GTasksActivity::takePaste(const std::string& pasted) {
 
 // --- Ticks and pages -------------------------------------------------------
 
-void GTasksActivity::toggle(const int index) {
-  if (index < 0 || index >= static_cast<int>(tasks_.size())) return;
-  gtasks::Task& t = tasks_[static_cast<size_t>(index)];
+std::vector<int> GTasksActivity::visibleRows() const {
+  const std::string today =
+      settings_.todayOnly ? gtasks::localDate(static_cast<int64_t>(std::time(nullptr))) : std::string();
+  return gtasks::visibleRows(tasks_, today);
+}
+
+void GTasksActivity::toggle(const int row) {
+  const std::vector<int> visible = visibleRows();
+  if (row < 0 || row >= static_cast<int>(visible.size())) return;
+  gtasks::Task& t = tasks_[static_cast<size_t>(visible[static_cast<size_t>(row)])];
   // A tick that has not gone up can be taken back for free: Google never knew.
   {
     RenderLock lock(*this);
@@ -514,7 +521,7 @@ void GTasksActivity::toggle(const int index) {
 }
 
 void GTasksActivity::stepPage(const int delta) {
-  const int count = static_cast<int>(tasks_.size());
+  const int count = static_cast<int>(visibleRows().size());
   const int pages = perPage_ > 0 ? (count + perPage_ - 1) / perPage_ : 1;
   const int next = page_ + delta;
   // Clamped, never wrapped: a wrap lands on a page that looks like any other.
@@ -757,7 +764,16 @@ void GTasksActivity::loop() {
       show(Phase::Settings);
       break;
     case gtasksui::ActionSettingRow:
-      if (event.value == static_cast<int>(gtasksui::SettingRow::Poll)) {
+      if (event.value == static_cast<int>(gtasksui::SettingRow::Show)) {
+        {
+          RenderLock lock(*this);
+          settings_.todayOnly = !settings_.todayOnly;
+          page_ = 0;
+        }
+        library_.saveSettings(settings_);
+        LOG_INF(kTag, "showing %s", settings_.todayOnly ? "due today" : "everything");
+        requestUpdate(true);
+      } else if (event.value == static_cast<int>(gtasksui::SettingRow::Poll)) {
         settings_.pollMinutes = gtasks::nextPollMinutes(settings_.pollMinutes);
         library_.saveSettings(settings_);
         // The new interval counts from now, not from the last attempt, so
@@ -833,6 +849,7 @@ void GTasksActivity::render(RenderLock&&) {
       const std::string poll = gtasks::pollLabel(settings_.pollMinutes);
       gtasksui::SettingsModel model;
       model.pollLabel = poll.c_str();
+      model.showLabel = settings_.todayOnly ? "DUE TODAY" : "ALL";
       // ON for this list; another list's name when that one is there (a tap
       // moves it here); OFF when no list is.
       gtasks::Asleep asleep;
@@ -895,7 +912,8 @@ void GTasksActivity::render(RenderLock&&) {
       what = "Tasks sign out";
       break;
     case Phase::List: {
-      const int count = static_cast<int>(tasks_.size());
+      const std::vector<int> visible = visibleRows();
+      const int count = static_cast<int>(visible.size());
       const int single = gtasksui::listCapacity(target, device, false);
       const bool paged = count > single;
       perPage_ = paged ? gtasksui::listCapacity(target, device, true) : single;
@@ -909,11 +927,11 @@ void GTasksActivity::render(RenderLock&&) {
       rows_.reserve(static_cast<size_t>(shown > 0 ? shown : 0));
       dueLabels_.reserve(rows_.capacity());
       for (int i = 0; i < shown; ++i) {
-        const gtasks::Task& t = tasks_[static_cast<size_t>(first + i)];
+        const gtasks::Task& t = tasks_[static_cast<size_t>(visible[static_cast<size_t>(first + i)])];
         dueLabels_.push_back(gtasks::dueLabel(t.due));
       }
       for (int i = 0; i < shown; ++i) {
-        const gtasks::Task& t = tasks_[static_cast<size_t>(first + i)];
+        const gtasks::Task& t = tasks_[static_cast<size_t>(visible[static_cast<size_t>(first + i)])];
         gtasksui::Row row;
         row.title = t.title.c_str();
         row.due = dueLabels_[static_cast<size_t>(i)].empty() ? nullptr : dueLabels_[static_cast<size_t>(i)].c_str();
@@ -959,7 +977,10 @@ void GTasksActivity::render(RenderLock&&) {
       model.canPageNext = page_ + 1 < pages;
       model.settingsIcon = &icon_go_settings_32;
       model.menuIcon = lists_.empty() ? nullptr : &icon_gtasks_menu_32;
-      if (meta_.lastSyncAt == 0 && !everAttempted_) {
+      if (count == 0 && !tasks_.empty()) {
+        model.emptyHeadline = "NOTHING DUE TODAY";
+        model.emptyMessage = "Tasks with no date still show here. The gear switches back to all of them.";
+      } else if (meta_.lastSyncAt == 0 && !everAttempted_) {
         model.emptyHeadline = "NOT SYNCED YET";
         model.emptyMessage = "Tap REFRESH to fetch your Google Tasks.";
       }

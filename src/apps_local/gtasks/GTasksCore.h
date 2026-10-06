@@ -143,9 +143,22 @@ struct Asleep {
 bool parseAsleep(const std::string& text, Asleep& out);
 std::string serializeAsleep(const Asleep& asleep);
 
-// Google's order: parents by position, each followed by its own children by
-// position. A child whose parent is not in the list is drawn as a parent.
+// Parents with no due date first, then by due date, then Google's position;
+// each followed by its own children in the same order. A child whose parent is
+// not in the list is drawn as a parent.
 void sortForDisplay(std::vector<Task>& tasks);
+
+// Indices into `tasks` (already sorted) that the list draws. `today` is
+// "YYYY-MM-DD", or empty for every task. With a date: undated tasks, tasks due
+// that day or earlier, and the parent of any child that is shown.
+std::vector<int> visibleRows(const std::vector<Task>& tasks, const std::string& today);
+
+// Below this, time() is not a date but a clock that was never set (2023-11-14,
+// the floor Study and Instapaper use).
+constexpr int64_t kClockFloor = 1700000000;
+
+// "YYYY-MM-DD" in local time, or "" when the clock was never set.
+std::string localDate(int64_t epoch);
 
 // True for a task drawn indented.
 bool isChild(const Task& task, const std::vector<Task>& all);
@@ -176,9 +189,11 @@ constexpr uint16_t kDefaultPollMinutes = 1;
 
 struct Settings {
   uint16_t pollMinutes = kDefaultPollMinutes;
+  // Show only undated tasks and those due today or earlier.
+  bool todayOnly = false;
 };
 
-// `poll_minutes=N`. A value that is not one of kPollChoices falls back to the
+// `poll_minutes=N` and `today_only=0|1`. A value that is not one of kPollChoices falls back to the
 // default rather than to whatever the file said, so a typo on the card cannot
 // make the reader poll every second.
 Settings parseSettings(const std::string& text);

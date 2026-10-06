@@ -259,18 +259,21 @@ void buildSettings(toybox::Screen& screen, const SettingsModel& model) {
 
   // A list, not a stack of settingRows: Screen::list() themes the rows the way
   // every other settings screen in the fork is themed.
-  fui::ListItem rows[3] = {};
-  rows[0].label = "AUTO SYNC";
-  rows[0].value = model.pollLabel;
-  rows[0].actionValue = static_cast<int16_t>(SettingRow::Poll);
-  int count = 1;
+  fui::ListItem rows[4] = {};
+  rows[0].label = "SHOW";
+  rows[0].value = model.showLabel;
+  rows[0].actionValue = static_cast<int16_t>(SettingRow::Show);
+  rows[1].label = "AUTO SYNC";
+  rows[1].value = model.pollLabel;
+  rows[1].actionValue = static_cast<int16_t>(SettingRow::Poll);
+  int count = 2;
   if (model.signedIn) {
-    rows[1].label = "SLEEP SCREEN";
-    rows[1].value = model.sleepLabel;
-    rows[1].actionValue = static_cast<int16_t>(SettingRow::Sleep);
-    rows[2].label = "SIGN OUT";
-    rows[2].actionValue = static_cast<int16_t>(SettingRow::SignOut);
-    count = 3;
+    rows[2].label = "SLEEP SCREEN";
+    rows[2].value = model.sleepLabel;
+    rows[2].actionValue = static_cast<int16_t>(SettingRow::Sleep);
+    rows[3].label = "SIGN OUT";
+    rows[3].actionValue = static_cast<int16_t>(SettingRow::SignOut);
+    count = 4;
   }
   fui::ListProps list;
   list.items = rows;
@@ -279,15 +282,15 @@ void buildSettings(toybox::Screen& screen, const SettingsModel& model) {
   list.action = ActionSettingRow;
   screen.list(list);
 
-  // What the first row means, under the rows, because "on charger" is the
-  // whole condition and nothing else on the screen says so.
+  // What the rows mean, under them, because "on charger" is the whole
+  // condition and nothing else on the screen says so.
   const fui::Rect footer = footerBand(device);
   const fui::TextStyle note = plain(toybox::kUiFont, fui::TextAlign::Left, fui::Color::DarkGray, 5);
   const int16_t h = static_cast<int16_t>(screen.target().lineHeight(note.font) * 5);
   const int16_t width = pageWidth(device);
   const std::string text = toybox::fitLines(screen.target(),
-                                            "Auto sync is how often to check Google while this app is open on the "
-                                            "charger. Sleep screen shows this list while the reader is off.",
+                                            "Due today also keeps overdue tasks and tasks with no date. Auto sync "
+                                            "checks Google while this app is open on the charger.",
                                             width, 5, note);
   screen.target().text(
       fui::makeRect(toybox::kMargin, static_cast<int16_t>(footer.y - toybox::kGutter * 2 - h), width, h), text.c_str(),

@@ -14743,7 +14743,8 @@ void settingsOffersSignOutOnlyWhenSignedIn() {
     CHECK(drewText(out, "AUTO SYNC"));
     CHECK(drewText(out, "SIGN OUT") == signedIn);
     CHECK(drewText(out, "SLEEP SCREEN") == signedIn);
-    CHECK(countOf(out, gtasksui::ActionSettingRow) == (signedIn ? 3 : 1));
+    CHECK(drewText(out, "SHOW"));
+    CHECK(countOf(out, gtasksui::ActionSettingRow) == (signedIn ? 4 : 2));
     CHECK(out.has(gtasksui::ActionCloseSettings));
   }
 }
