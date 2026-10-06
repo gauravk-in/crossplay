@@ -52,6 +52,7 @@
 #include "../../src/apps_local/ui/ToyboxIcons.h"
 #include "../../src/apps_local/ui/ToyboxText.h"
 #include "../../src/apps_local/ui/ToyboxWrappedText.h"
+#include "../../src/apps_local/wallet/WalletScreens.h"
 #include "../../src/apps_local/wallpapers/WallpapersCore.h"
 #include "../../src/apps_local/wallpapers/WallpapersScreens.h"
 #include "../../src/apps_local/wavelength/WavelengthScreens.h"
@@ -14784,7 +14785,178 @@ void theMenuOffersTodayOnlyWhenThereIsOne() {
 
 }  // namespace wordletest
 
+// --- Cards: the code has its square to itself, and every card can be left --
+
+namespace wallettest {
+
+template <typename Build>
+void build(Rendered& out, Build&& fn) {
+  const fui::DeviceContext ctx = device();
+  const fui::InputSnapshot noInput{};
+  toybox::Frame frame(out.target, ctx, noInput, out.interactions);
+  toybox::Screen screen(frame, toybox::themeTokens());
+  fn(screen);
+}
+
+int countAction(const Rendered& out, const fui::ActionId action) {
+  int n = 0;
+  for (size_t i = 0; i < out.interactions.count(); ++i) {
+    if (out.interactions.data()[i].action == action) n++;
+  }
+  return n;
+}
+
+const fui::Rect* hitFor(const Rendered& out, const fui::ActionId action) {
+  for (size_t i = 0; i < out.interactions.count(); ++i) {
+    if (out.interactions.data()[i].action == action) return &out.interactions.data()[i].rect;
+  }
+  return nullptr;
+}
+
+bool drew(const Rendered& out, const char* text) {
+  for (const auto& run : out.target.texts) {
+    if (run.text == text) return true;
+  }
+  return false;
+}
+
+bool overlaps(const fui::Rect& a, const fui::Rect& b) {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
+void theListOpensEveryVisibleCardAndThePencilIsOnTheBand() {
+  const walletui::ListRow rows[] = {{"Lidl Plus", "Member 4821"},
+                                    {"Boarding pass", "LH 1234, seat 14C"},
+                                    {"My contact", ""},
+                                    {"Gym", ""},
+                                    {"Library", "Card 22"},
+                                    {"Wi-Fi", "Guests"},
+                                    {"Bakery", ""},
+                                    {"Museum", ""}};
+  const int capacity = walletui::listCapacity(device());
+  CHECK(capacity >= 5);
+  CHECK(capacity < 8);
+  Rendered out;
+  walletui::ListModel model;
+  model.rows = rows;
+  model.count = 8;
+  model.pageLabel = "1/2";
+  build(out, [&](toybox::Screen& screen) { walletui::buildList(screen, model); });
+  CHECK(countAction(out, walletui::ActionOpenCard) == capacity);
+  CHECK(countAction(out, walletui::ActionUsePhone) == 1);
+  const fui::Rect* pencil = hitFor(out, walletui::ActionUsePhone);
+  CHECK(pencil != nullptr && pencil->y + pencil->height <= 119 && pencil->x > 240);
+  CHECK(drew(out, "Lidl Plus"));
+  CHECK(drew(out, "Member 4821"));
+  CHECK(drew(out, "1/2"));
+  // Every row inside the panel.
+  for (size_t i = 0; i < out.interactions.count(); ++i) {
+    const auto& hit = out.interactions.data()[i];
+    CHECK(hit.rect.y + hit.rect.height <= 800);
+  }
+}
+
+void anEmptyListSaysWhereCardsComeFrom() {
+  Rendered out;
+  walletui::ListModel model;
+  build(out, [&](toybox::Screen& screen) { walletui::buildList(screen, model); });
+  CHECK(countAction(out, walletui::ActionOpenCard) == 0);
+  CHECK(countAction(out, walletui::ActionUsePhone) == 1);
+  bool said = false;
+  for (const auto& run : out.target.texts) said = said || run.text.find("pencil") != std::string::npos;
+  CHECK(said);
+}
+
+walletui::CardModel cardAt(const bool prev, const bool next, const char* caption) {
+  walletui::CardModel model;
+  model.title = "Boarding pass";
+  model.caption = caption;
+  model.position = "2/3";
+  model.hasPrev = prev;
+  model.hasNext = next;
+  return model;
+}
+
+void theCodeHasItsSquareToItself() {
+  const char* captions[] = {"", "LH 1234 Munich to Lisbon, boarding 06:40, seat 14C, group 2"};
+  for (const char* caption : captions) {
+    Rendered out;
+    fui::Rect square{};
+    const walletui::CardModel model = cardAt(true, true, caption);
+    build(out, [&](toybox::Screen& screen) { square = walletui::buildCard(screen, model); });
+    // Big enough that a version 29 code still gets three pixels a module.
+    CHECK(square.width == square.height);
+    CHECK(square.width >= 133 * 3);
+    CHECK(square.y >= 99);
+    CHECK(square.x >= 16 && square.x + square.width <= 480 - 16);
+    // Nothing drawn or tappable inside it: the code's quiet zone stays white.
+    for (const auto& run : out.target.texts) CHECK(!overlaps(run.rect, square));
+    for (size_t i = 0; i < out.interactions.count(); ++i) {
+      CHECK(!overlaps(out.interactions.data()[i].rect, square));
+    }
+    CHECK(drew(out, "2/3"));
+    CHECK(countAction(out, walletui::ActionDelete) == 1);
+  }
+}
+
+void prevAndNextAreOnlyThereWhenThereIsACardThatWay() {
+  {
+    Rendered out;
+    const walletui::CardModel model = cardAt(false, true, "");
+    build(out, [&](toybox::Screen& screen) { walletui::buildCard(screen, model); });
+    CHECK(countAction(out, walletui::ActionPrev) == 0);
+    CHECK(countAction(out, walletui::ActionNext) == 1);
+  }
+  {
+    Rendered out;
+    const walletui::CardModel model = cardAt(true, false, "");
+    build(out, [&](toybox::Screen& screen) { walletui::buildCard(screen, model); });
+    CHECK(countAction(out, walletui::ActionPrev) == 1);
+    CHECK(countAction(out, walletui::ActionNext) == 0);
+  }
+}
+
+void keepItSitsWhereNextWas() {
+  Rendered card;
+  const walletui::CardModel model = cardAt(true, true, "");
+  build(card, [&](toybox::Screen& screen) { walletui::buildCard(screen, model); });
+  Rendered confirm;
+  build(confirm, [&](toybox::Screen& screen) {
+    walletui::buildDeleteConfirm(screen, "Boarding pass", "Delete this card from the reader?");
+  });
+  const fui::Rect* next = hitFor(card, walletui::ActionNext);
+  const fui::Rect* keep = hitFor(confirm, walletui::ActionDeleteKeep);
+  const fui::Rect* bin = hitFor(card, walletui::ActionDelete);
+  const fui::Rect* yes = hitFor(confirm, walletui::ActionDeleteConfirm);
+  CHECK(next != nullptr && keep != nullptr && bin != nullptr && yes != nullptr);
+  if (next && keep) CHECK(next->x == keep->x && next->y == keep->y && next->width == keep->width);
+  // A second jab at the bin during the repaint lands on nothing that deletes.
+  if (bin && yes) CHECK(!overlaps(*bin, *yes));
+}
+
+void thePhoneScreenLeavesOneWayOut() {
+  Rendered out;
+  walletui::PhoneModel model;
+  model.url = "http://192.168.1.20/cards";
+  model.readable = "http://crossplay.local/cards";
+  model.added = 2;
+  fui::Rect qr{};
+  build(out, [&](toybox::Screen& screen) { qr = walletui::buildPhone(screen, model); });
+  CHECK(qr.width >= 120 && qr.width == qr.height);
+  CHECK(countAction(out, walletui::ActionDismiss) == 1);
+  CHECK(drew(out, "2 CARDS ADDED"));
+  CHECK(drew(out, "http://crossplay.local/cards"));
+}
+
+}  // namespace wallettest
+
 int main() {
+  wallettest::theListOpensEveryVisibleCardAndThePencilIsOnTheBand();
+  wallettest::anEmptyListSaysWhereCardsComeFrom();
+  wallettest::theCodeHasItsSquareToItself();
+  wallettest::prevAndNextAreOnlyThereWhenThereIsACardThatWay();
+  wallettest::keepItSitsWhereNextWas();
+  wallettest::thePhoneScreenLeavesOneWayOut();
   notestest::aNoteAsleepIsReadOnlyAndTaller();
   wordletest::everyKeyIsWhereItIsDrawn();
   wordletest::aFinishedGameShowsTheAnswerAndLetsGo();

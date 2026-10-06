@@ -25,6 +25,11 @@ notice and permission notice in all copies, and the icons are rasterised into
 bitmaps at build time, so this entry is how that notice reaches a flashed
 device.
 
+**jsQR** 1.4.0, Apache License 2.0, Copyright Cosmo Wolfe. The Cards phone
+page uses it to read a QR code out of a picture on the phone. Minified into
+`src/apps_local/wallet/WalletJsqr.js` and served from the firmware; full text at
+`src/apps_local/wallet/jsqr-LICENSE`.
+
 **Noto Sans Symbols 2**, SIL Open Font License 1.1. The Solitaire suit glyphs
 are drawn from it. Full text at `src/apps_local/solitaire/art/OFL.txt`, with the
 derivation documented in `src/apps_local/solitaire/art/README.md`.
