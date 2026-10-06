@@ -108,7 +108,7 @@ grep -rl "Button::Up\|Button::Down" src/apps_local/*/ | cut -d/ -f3 | sort -u
 | Left / Right | 1                 | **no**           |
 | Up / Down    | 15                | **yes**          |
 
-Eighteen of the thirty-six directories use Back and nothing else.
+Eighteen of the thirty-seven directories use Back and nothing else.
 
 > **The finding below was true when it was written, in August 2026, and it is
 > not true any more.** It said the two real keys were unused by every game we

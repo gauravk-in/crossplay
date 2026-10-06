@@ -89,6 +89,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Calculator**  | A calculator with keys the size of a thumb, and the sums you already did. |
 | **Notes**       | Lists you tick with one hand, kept as plain text files on the card.      |
 | **Tasks**       | Your Google Tasks list: tick here, synced on refresh or on the charger.  |
+| **Workouts**    | Schedules written on your phone, sets ticked off here, the week at a glance. |
 
 And the reader is still CrossPoint's reader: the EPUB engine, sync and the file
 browser are theirs and stay theirs.
