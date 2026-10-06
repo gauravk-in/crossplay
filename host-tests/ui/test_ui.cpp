@@ -24,6 +24,7 @@
 #include "../../src/apps_local/connections/ConnectionsScreens.h"
 #include "../../src/apps_local/dungeon/DungeonScreens.h"
 #include "../../src/apps_local/forehead/ForeheadScreens.h"
+#include "../../src/apps_local/gcal/GCalScreens.h"
 #include "../../src/apps_local/go/GoScreens.h"
 #include "../../src/apps_local/gtasks/GTasksScreens.h"
 #include "../../src/apps_local/hackernews/HackerNewsScreens.h"
@@ -14871,6 +14872,144 @@ void asleepTheListHasNoButtonsAndMoreRoom() {
 
 }  // namespace gtaskstest
 
+namespace gcaltest {
+
+using gtaskstest::countOf;
+using gtaskstest::rectOf;
+
+// Three days: a birthday and a meeting on one, today with nothing, a trip.
+struct Fixture {
+  std::vector<gcal::Event> events;
+  std::vector<gcal::Item> items;
+  int64_t today = gcal::daysFromCivil(2026, 10, 6);
+  Fixture() {
+    gcal::Event birthday;
+    birthday.allDay = true;
+    birthday.title = "Mum's birthday";
+    birthday.start = gcal::daysFromCivil(2026, 10, 7);
+    birthday.end = birthday.start + 1;
+    gcal::Event meeting;
+    meeting.title = "Dentist";
+    meeting.location = "High St";
+    meeting.start = gcal::daysFromCivil(2026, 10, 7) * 86400 + 9 * 3600 + 30 * 60;
+    meeting.end = meeting.start + 45 * 60;
+    gcal::Event trip;
+    trip.allDay = true;
+    trip.title = "Lisbon";
+    trip.start = gcal::daysFromCivil(2026, 11, 2);
+    trip.end = trip.start + 3;
+    events = {birthday, meeting, trip};
+    gcal::sortEvents(events);
+    items = gcal::buildSchedule(events, today - 14, today + 90, today);
+  }
+};
+
+void renderSchedule(Rendered& out, const Fixture& f, const bool asleep, const bool canGoToday, int count = -1) {
+  const std::vector<int> heights = gcalui::itemHeights(out.target, f.items);
+  gcalui::ScheduleModel model;
+  model.title = "OCTOBER 2026";
+  model.status = "14:32";
+  model.items = f.items.data();
+  model.heights = heights.data();
+  model.count = count >= 0 ? count : static_cast<int>(f.items.size());
+  model.events = f.events.data();
+  model.eventCount = static_cast<int>(f.events.size());
+  model.today = f.today;
+  model.canPageNext = true;
+  model.canGoToday = canGoToday;
+  model.settingsIcon = &icon_go_settings_32;
+  model.asleep = asleep;
+  gtaskstest::render(out, [&](toybox::Screen& screen) { gcalui::buildSchedule(screen, model); });
+}
+
+// Every row of a page that fits is drawn: the day, the event, its time and
+// place, the month banner, and today's "nothing" line.
+void theSchedulePageDrawsEveryRowItWasGiven() {
+  const Fixture f;
+  Rendered out;
+  const std::vector<int> heights = gcalui::itemHeights(out.target, f.items);
+  CHECK(heights.size() == f.items.size());
+  const int fit = gcal::fitFrom(heights, 0, gcalui::pageHeight(device(), false));
+  CHECK(fit == static_cast<int>(f.items.size()));
+  renderSchedule(out, f, false, false);
+  CHECK(!out.interactions.overflowed());
+  CHECK(drewText(out, "Nothing planned"));
+  CHECK(drewText(out, "Mum's birthday"));
+  CHECK(drewText(out, "09:30 - 10:15, High St"));
+  CHECK(drewText(out, "NOVEMBER 2026"));
+  CHECK(drewText(out, "DAY 2 / 3"));
+  CHECK(drewText(out, "TUE"));
+  CHECK(drewText(out, "14:32"));
+  CHECK(out.has(gcalui::ActionRefresh));
+  CHECK(out.has(gcalui::ActionPageNext));
+  CHECK(out.has(gcalui::ActionSettings));
+  // Today is on the page, so TODAY has nowhere to go; nor does the back arrow.
+  CHECK(!out.has(gcalui::ActionToday));
+  CHECK(!out.has(gcalui::ActionPagePrev));
+}
+
+void todayIsTappableWhenThePageHasMovedOn() {
+  const Fixture f;
+  Rendered out;
+  renderSchedule(out, f, false, true);
+  CHECK(out.has(gcalui::ActionToday));
+}
+
+void asleepTheScheduleHasNoButtons() {
+  const Fixture f;
+  Rendered out;
+  renderSchedule(out, f, true, true);
+  CHECK(!out.has(gcalui::ActionRefresh));
+  CHECK(!out.has(gcalui::ActionToday));
+  CHECK(!out.has(gcalui::ActionSettings));
+  CHECK(!out.has(gcalui::ActionPageNext));
+  CHECK(drewText(out, "Dentist"));
+  // The sleeping page runs to the bottom of the panel.
+  CHECK(gcalui::pageHeight(device(), true) > gcalui::pageHeight(device(), false));
+}
+
+void anEmptyCalendarSaysSoAndStillRefreshes() {
+  Rendered out;
+  gcalui::ScheduleModel model;
+  model.emptyHeadline = "NOT SYNCED YET";
+  gtaskstest::render(out, [&](toybox::Screen& screen) { gcalui::buildSchedule(screen, model); });
+  CHECK(drewText(out, "NOT SYNCED YET"));
+  CHECK(out.has(gcalui::ActionRefresh));
+}
+
+void calendarSettingsOfferSignOutOnlyWhenSignedIn() {
+  for (const bool signedIn : {false, true}) {
+    Rendered out;
+    gcalui::SettingsModel model;
+    model.pollLabel = "EVERY 5 MIN";
+    model.sleepLabel = "OFF";
+    model.account = "gaurav@example.com";
+    model.signedIn = signedIn;
+    gtaskstest::render(out, [&](toybox::Screen& screen) { gcalui::buildSettings(screen, model); });
+    CHECK(drewText(out, "EVERY 5 MIN"));
+    CHECK(drewText(out, "SLEEP SCREEN"));
+    CHECK(drewText(out, "SIGN OUT") == signedIn);
+    CHECK(countOf(out, gcalui::ActionSettingRow) == (signedIn ? 3 : 2));
+    CHECK(out.has(gcalui::ActionCloseSettings));
+  }
+}
+
+void calendarSignOutKeepsTheAccountUnderTheThumb() {
+  Rendered confirm;
+  gtaskstest::render(confirm, [&](toybox::Screen& screen) { gcalui::buildSignOutConfirm(screen); });
+  Rendered settings;
+  gcalui::SettingsModel model;
+  model.signedIn = true;
+  gtaskstest::render(settings, [&](toybox::Screen& screen) { gcalui::buildSettings(screen, model); });
+  fui::Rect back{};
+  CHECK(rectOf(settings, gcalui::ActionCloseSettings, -1, back));
+  const fui::ActionEvent hit = confirm.tap(back.x + 8, back.y + back.height / 2);
+  CHECK(hit.action == gcalui::ActionKeepSignedIn);
+  CHECK(drewText(confirm, "Tasks"));
+}
+
+}  // namespace gcaltest
+
 namespace wordletest {
 
 void buildGame(Rendered& out, const wordleui::GameModel& model, wordleui::KeyboardLayout& keys) {
@@ -15048,6 +15187,12 @@ int main() {
   gtaskstest::theMenuSitsLeftOfTheTitleAndOpensTheLists();
   gtaskstest::everyListIsARowThatNamesItsIndex();
   gtaskstest::asleepTheListHasNoButtonsAndMoreRoom();
+  gcaltest::theSchedulePageDrawsEveryRowItWasGiven();
+  gcaltest::todayIsTappableWhenThePageHasMovedOn();
+  gcaltest::asleepTheScheduleHasNoButtons();
+  gcaltest::anEmptyCalendarSaysSoAndStillRefreshes();
+  gcaltest::calendarSettingsOfferSignOutOnlyWhenSignedIn();
+  gcaltest::calendarSignOutKeepsTheAccountUnderTheThumb();
   notestest::aNoteAsleepIsReadOnlyAndTaller();
   wordletest::everyKeyIsWhereItIsDrawn();
   wordletest::aFinishedGameShowsTheAnswerAndLetsGo();
