@@ -82,7 +82,10 @@ class GTasksActivity final : public Activity {
   bool sync(std::string& message, bool& changed);
   bool ensureToken(std::string& message);
   void backgroundPoll();
-  void toggle(int index);
+  // Indices into tasks_ the list draws: all of them, or with the setting on,
+  // what is due by today.
+  std::vector<int> visibleRows() const;
+  void toggle(int row);
   void pickList(int index);
   // Puts the open list on the sleep screen, or takes it off if it is there.
   void toggleAsleep();

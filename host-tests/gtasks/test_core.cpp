@@ -185,6 +185,46 @@ void testSortPutsChildrenUnderTheirParent() {
   CHECK(!gtasks::isChild(t[3], t));
 }
 
+Task dated(const char* id, const char* position, const char* due, const char* parent = "") {
+  Task t = task(id, id, position, parent);
+  t.due = due;
+  return t;
+}
+
+void testSortPutsUndatedFirstThenByDueDate() {
+  std::vector<Task> t = {dated("late", "000", "2026-10-09"),
+                         dated("plain2", "004", ""),
+                         dated("soon", "001", "2026-10-06"),
+                         dated("plain1", "003", ""),
+                         dated("kid-late", "000", "2026-10-08", "plain1"),
+                         dated("kid-plain", "001", "", "plain1")};
+  gtasks::sortForDisplay(t);
+  const char* want[] = {"plain1", "kid-plain", "kid-late", "plain2", "soon", "late"};
+  CHECK(t.size() == 6);
+  for (size_t i = 0; i < t.size() && i < 6; ++i) CHECK_EQ(t[i].id, want[i]);
+}
+
+void testTodayKeepsUndatedOverdueAndToday() {
+  std::vector<Task> t = {dated("plain", "000", ""),
+                         dated("overdue", "001", "2026-10-01"),
+                         dated("today", "002", "2026-10-06"),
+                         dated("later", "003", "2026-10-07"),
+                         dated("kid-today", "000", "2026-10-06", "later"),
+                         dated("kid-later", "001", "2026-10-09", "later")};
+  // Unsorted on purpose: the filter goes by index, whatever the order.
+  const std::vector<int> all = gtasks::visibleRows(t, "");
+  CHECK(all.size() == 6);
+  const std::vector<int> today = gtasks::visibleRows(t, "2026-10-06");
+  // "later" stays as kid-today's parent; kid-later goes.
+  const std::vector<int> want = {0, 1, 2, 3, 4};
+  CHECK(today == want);
+  std::vector<Task> lone = {dated("later", "000", "2026-10-07")};
+  CHECK(gtasks::visibleRows(lone, "2026-10-06").empty());
+  CHECK_EQ(gtasks::localDate(0), "");
+  CHECK_EQ(gtasks::localDate(1000), "");
+  CHECK(gtasks::localDate(1790000000).size() == 10);
+}
+
 void testMergeKeepsAPendingTickThatHasNotGoneUp() {
   const std::vector<Task> local = {task("a", "A", "001", "", true), task("b", "B", "002")};
   const std::vector<Task> fresh = {task("a", "A renamed", "001"), task("b", "B", "002"), task("n", "New", "003")};
@@ -223,6 +263,13 @@ void testSettingsDefaultIsOneMinute() {
   CHECK(gtasks::parseSettings("poll_minutes=7\n").pollMinutes == 1);
   CHECK(gtasks::parseSettings("poll_minutes=-5\n").pollMinutes == 1);
   CHECK(gtasks::parseSettings(gtasks::serializeSettings(gtasks::Settings{30})).pollMinutes == 30);
+  CHECK(!gtasks::parseSettings("poll_minutes=5\n").todayOnly);
+  gtasks::Settings today;
+  today.todayOnly = true;
+  today.pollMinutes = 5;
+  const gtasks::Settings back = gtasks::parseSettings(gtasks::serializeSettings(today));
+  CHECK(back.todayOnly);
+  CHECK(back.pollMinutes == 5);
 }
 
 void testPollChoicesCycleThroughOff() {
@@ -311,6 +358,8 @@ int main() {
   testCacheDropsDamageNotTheFile();
   testACacheFromSomebodyElseIsEmpty();
   testSortPutsChildrenUnderTheirParent();
+  testSortPutsUndatedFirstThenByDueDate();
+  testTodayKeepsUndatedOverdueAndToday();
   testMergeKeepsAPendingTickThatHasNotGoneUp();
   testMergeDropsATickOnATaskGoogleNoLongerHas();
   testDueLabels();
