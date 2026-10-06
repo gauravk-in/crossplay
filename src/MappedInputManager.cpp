@@ -4,8 +4,8 @@
 #include <FreeInkUICore.h>
 #include <GfxRenderer.h>
 #include <HalFrontlight.h>
-#include <Logging.h>
 #include <HalHaptics.h>
+#include <Logging.h>
 
 #include <algorithm>
 #include <cstdlib>
