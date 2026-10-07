@@ -19,9 +19,9 @@
 namespace release_sources {
 
 #ifdef CROSSPLAY_RELEASE_URL
-// A personal OTA feed (env x4pro_ota): a GitHub-shaped release JSON on a host
-// the owner controls, and nothing else. Falling back to the fork's releases
-// would offer a build without the owner's apps as an update.
+// A personal OTA feed (env x4pro_ota): the owner's own releases/latest, and
+// nothing else. Falling back to the fork's releases would offer a build
+// without the owner's apps as an update.
 constexpr const char* const kUrls[] = {CROSSPLAY_RELEASE_URL};
 static_assert(sizeof(CROSSPLAY_RELEASE_URL) > sizeof("https://"), "CROSSPLAY_RELEASE_URL is empty");
 #else
