@@ -148,7 +148,7 @@ void listRow(toybox::Screen& screen, const fui::Rect& box, const ListRow& item, 
   const fui::Rect badge =
       fui::makeRect(box.x, static_cast<int16_t>(box.y + (box.height - kBadgeSide) / 2), kBadgeSide, kBadgeSide);
   screen.target().fill(badge, kInk, 0);
-  icon(screen, badge, icon_wallet_qr_32, fui::Color::White);
+  icon(screen, badge, item.barcode ? icon_wallet_bars_32 : icon_wallet_qr_32, fui::Color::White);
 
   const int16_t textX = static_cast<int16_t>(box.x + kBadgeSide + toybox::kGutter);
   const int16_t textW = static_cast<int16_t>(box.x + box.width - textX);
@@ -233,10 +233,59 @@ void buildList(toybox::Screen& screen, const ListModel& model) {
 
 // --- One card ------------------------------------------------------------
 
+namespace {
+
+constexpr int kMinModulePx = 2;
+
+// A barcode's rectangle in `room`, with the number printed under it. The text
+// takes the display face, large enough for a cashier to type it in when the
+// scanner gives up.
+fui::Rect barcodeIn(toybox::Screen& screen, const fui::Rect& room, const CardModel& model) {
+  const int16_t textLine = screen.target().lineHeight(toybox::kDisplayFont);
+  const int16_t gap = toybox::kGutter;
+  const int modules = model.barModules > 0 ? model.barModules : 1;
+  const int16_t barsRoom = static_cast<int16_t>(room.height - gap - textLine);
+  // Across the page, the way every till expects to see one; down it only when
+  // a long code would otherwise get modules too thin to scan.
+  const bool rotate = room.width / modules < kMinModulePx;
+  fui::Rect bars;
+  if (barsRoom / modules < 1) {
+    // Longer than the page at one pixel a module: the caller says so in the
+    // square a QR code would have had.
+    return codeSquare(room, static_cast<int16_t>(gap + textLine));
+  }
+  if (!rotate) {
+    const int16_t px = static_cast<int16_t>(room.width / modules);
+    const int16_t width = static_cast<int16_t>(px * modules);
+    int16_t height = static_cast<int16_t>(room.width / 2);
+    if (height > barsRoom) height = barsRoom;
+    // Centred in the room, bars and number together: a barcode is much
+    // shorter than the square a QR code takes, and hung from the band it
+    // leaves the page's middle empty.
+    const int16_t top = static_cast<int16_t>(room.y + (room.height - height - gap - textLine) / 2);
+    bars = fui::makeRect(static_cast<int16_t>(room.x + (room.width - width) / 2), top, width, height);
+  } else {
+    const int16_t px = static_cast<int16_t>(barsRoom / modules);
+    const int16_t length = static_cast<int16_t>(px * modules);
+    int16_t across = static_cast<int16_t>(room.width * 3 / 5);
+    if (across >= length) across = static_cast<int16_t>(length - 1);
+    bars = fui::makeRect(static_cast<int16_t>(room.x + (room.width - across) / 2), room.y, across, length);
+  }
+  if (model.barText != nullptr && model.barText[0] != '\0') {
+    const fui::Rect line =
+        fui::makeRect(room.x, static_cast<int16_t>(bars.y + bars.height + gap), room.width, textLine);
+    fittedLine(screen, line, model.barText, fui::TextAlign::Center, toybox::kDisplayFont);
+  }
+  return bars;
+}
+
+}  // namespace
+
 fui::Rect buildCard(toybox::Screen& screen, const CardModel& model) {
   const fui::DeviceContext& device = screen.device();
   const fui::Rect footer = footerBand(device);
   const bool captioned = model.caption != nullptr && model.caption[0] != '\0';
+  const bool barcode = model.barModules > 0;
   const int16_t bodyLine = screen.target().lineHeight(toybox::kBodyFont);
 
   // The title is the band, as a pass's name is its header; the code fills the
@@ -248,27 +297,32 @@ fui::Rect buildCard(toybox::Screen& screen, const CardModel& model) {
   }
   fui::Rect room = bodyAboveFooter(device);
   const int16_t below = captioned ? static_cast<int16_t>(toybox::kGutter * 2 + bodyLine * 2) : 0;
-  fui::Rect square = codeSquare(room, below);
-  if (model.asleep) {
-    // No footer asleep, so the code and its caption sit in the middle of the
-    // whole page instead of hanging from the band.
-    const int16_t height = static_cast<int16_t>(device.height - toybox::kMargin - room.y);
-    square = codeSquare(fui::makeRect(room.x, room.y, room.width, height), below);
-    room.y = static_cast<int16_t>(room.y + (height - square.height - below) / 2);
-    room.height = static_cast<int16_t>(square.height + below);
-    square.y = room.y;
+  if (model.asleep) room.height = static_cast<int16_t>(device.height - toybox::kMargin - room.y);
+  fui::Rect code;
+  if (barcode) {
+    code =
+        barcodeIn(screen, fui::makeRect(room.x, room.y, room.width, static_cast<int16_t>(room.height - below)), model);
+  } else {
+    code = codeSquare(room, below);
+    if (model.asleep) {
+      // No footer asleep, so the code and its caption sit in the middle of the
+      // whole page instead of hanging from the band.
+      code.y = static_cast<int16_t>(room.y + (room.height - code.height - below) / 2);
+    }
   }
   if (captioned) {
     fui::TextStyle style = plain(toybox::kBodyFont, fui::TextAlign::Center, 2);
-    // Centred in what is left under the code, so it reads with the code
-    // rather than with the buttons.
-    const int16_t top = static_cast<int16_t>(square.y + square.height + toybox::kGutter);
-    const fui::Rect box = fui::makeRect(room.x, top, room.width, static_cast<int16_t>(room.y + room.height - top));
+    // Under the code and centred in the room it leaves, so it reads with the
+    // code rather than with the buttons.
+    int16_t top = static_cast<int16_t>(code.y + code.height + toybox::kGutter);
+    if (barcode) top = static_cast<int16_t>(top + toybox::kGutter + screen.target().lineHeight(toybox::kDisplayFont));
+    const int16_t bottom = model.asleep && !barcode ? static_cast<int16_t>(top + below) : room.y + room.height;
+    const fui::Rect box = fui::makeRect(room.x, top, room.width, static_cast<int16_t>(bottom - top));
     const std::string drawn = toybox::fitLines(screen.target(), model.caption, box.width, 2, style);
     screen.target().text(box, drawn.c_str(), style);
   }
   if (!model.asleep) footerControls(screen, footer, model);
-  return square;
+  return code;
 }
 
 void buildCardFailure(toybox::Screen& screen, const fui::Rect& square, const char* prose) {

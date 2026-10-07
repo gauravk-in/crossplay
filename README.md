@@ -88,7 +88,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Wikipedia**   | Fifty thousand articles on the card, read like a book, no internet.      |
 | **Calculator**  | A calculator with keys the size of a thumb, and the sums you already did. |
 | **Notes**       | Lists you tick with one hand, kept as plain text files on the card.      |
-| **Cards**       | Loyalty cards, boarding passes and links as QR codes, added from a phone screenshot. |
+| **Cards**       | Loyalty cards, boarding passes and links as QR codes or barcodes, added from a phone screenshot. |
 
 And the reader is still CrossPoint's reader: the EPUB engine, sync and the file
 browser are theirs and stay theirs.

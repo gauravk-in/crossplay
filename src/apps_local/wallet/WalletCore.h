@@ -14,6 +14,11 @@
 //   Member since 2021    <- the caption, line two, may be empty
 //   https://lidl.de/...  <- the code's payload: everything after line two
 //
+// A barcode card names its kind after the title and a tab, "Lidl Plus\tean13";
+// a title with no kind is a QR code, which is every card written before
+// barcodes. A title can never hold a tab of its own, because cleanLine() turns
+// tabs into spaces, so the tab is unambiguous.
+//
 // The payload is what the code SAYS, not a picture of it. The phone decodes the
 // photo and the reader draws the code again from these bytes, so the panel
 // shows sharp modules at whatever size fits rather than a dithered photograph.
@@ -25,6 +30,8 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+
+#include "WalletBars.h"
 
 namespace wallet {
 
@@ -43,6 +50,7 @@ struct Card {
   std::string title;
   std::string caption;
   std::string payload;
+  CodeKind kind = CodeKind::Qr;
 };
 
 // A file's contents as a card. False when there is no payload, which is the one
@@ -66,13 +74,16 @@ std::string nextFileName(const std::vector<std::string>& files);
 // The card files among a directory listing, in the order they were added.
 std::vector<std::string> cardFiles(const std::vector<std::string>& names);
 
-// What the phone sends: the title, the caption, then the payload in hex, each
-// on a line of its own. Hex because a code may carry any byte and the request
-// body arrives as text. False, with `error` set to a sentence for the phone,
-// when what came is not a card.
+// What the phone sends: the title, the caption, the payload in hex, and the
+// kind of code ("ean13"; missing means QR), each on a line of its own. Hex
+// because a code may carry any byte and the request body arrives as text.
+// False, with `error` set to a sentence for the phone, when what came is not a
+// card or not a barcode of the kind it says. An EAN or UPC sent without its
+// check digit is saved with it.
 bool parseUpload(const std::string& body, Card& out, std::string& error);
 
-// The list the phone page shows: "file<TAB>title<TAB>caption" per line.
+// The list the phone page shows: "file<TAB>title<TAB>caption<TAB>kind" per
+// line.
 std::string formatListing(const std::vector<Card>& cards);
 
 // The smallest QR version whose byte mode holds `bytes` at error correction

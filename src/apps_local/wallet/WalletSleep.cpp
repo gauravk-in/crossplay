@@ -8,6 +8,7 @@
 
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "../../components/themes/BaseTheme.h"  // Rect, which ToyboxTheme.h uses and does not include
 #include "../ui/ToyboxFonts.h"
@@ -40,7 +41,9 @@ bool writeAsleep(const AsleepChoice& choice) {
 
 void clearAsleep() { Storage.remove(kAsleepFile); }
 
-bool drawCode(GfxRenderer& renderer, const fui::Rect& square, const std::string& payload) {
+namespace {
+
+bool drawQr(GfxRenderer& renderer, const fui::Rect& square, const std::string& payload) {
   if (payload.empty() || square.width <= 0) return false;
   // The version is chosen from the capacity table, never by trial: the QR
   // library does not check that the data fits the version it is given and
@@ -100,6 +103,59 @@ bool drawCode(GfxRenderer& renderer, const fui::Rect& square, const std::string&
   return true;
 }
 
+// Bars drawn as runs, each run one fill, at the rectangle's whole pixels per
+// module; across the page, or down it when the layout turned the barcode.
+void drawBars(GfxRenderer& renderer, const fui::Rect& bars, const std::vector<uint8_t>& modules) {
+  const int total = static_cast<int>(modules.size()) + 2 * kQuietModules;
+  const bool rotated = walletui::barsRotated(bars);
+  const int px = (rotated ? bars.height : bars.width) / total;
+  size_t m = 0;
+  while (m < modules.size()) {
+    if (!modules[m]) {
+      m++;
+      continue;
+    }
+    const size_t start = m;
+    while (m < modules.size() && modules[m]) m++;
+    const int at = (static_cast<int>(start) + kQuietModules) * px;
+    const int length = static_cast<int>(m - start) * px;
+    if (rotated) {
+      renderer.fillRect(bars.x, bars.y + at, bars.width, length, true);
+    } else {
+      renderer.fillRect(bars.x + at, bars.y, length, bars.height, true);
+    }
+  }
+}
+
+}  // namespace
+
+void showCard(GfxRenderer& renderer, toybox::Screen& screen, walletui::CardModel model, const Card& card) {
+  if (card.kind == CodeKind::Qr) {
+    const fui::Rect square = walletui::buildCard(screen, model);
+    if (!drawQr(renderer, square, card.payload)) {
+      walletui::buildCardFailure(screen, square, "This code holds too much to draw on the panel.");
+    }
+    return;
+  }
+  std::vector<uint8_t> modules;
+  std::string text;
+  if (!encodeBars(card.kind, card.payload, modules, text)) {
+    // A hand-edited file can say ean13 over a payload no EAN holds.
+    const fui::Rect square = walletui::buildCard(screen, model);
+    walletui::buildCardFailure(screen, square, "This number cannot be drawn as the barcode its file names.");
+    return;
+  }
+  model.barModules = static_cast<int>(modules.size()) + 2 * kQuietModules;
+  model.barText = text.c_str();
+  const fui::Rect bars = walletui::buildCard(screen, model);
+  const int px = (walletui::barsRotated(bars) ? bars.height : bars.width) / model.barModules;
+  if (px < 1) {
+    walletui::buildCardFailure(screen, bars, "This barcode is too long to draw on the panel.");
+    return;
+  }
+  drawBars(renderer, bars, modules);
+}
+
 bool drawAsleep(GfxRenderer& renderer) {
   AsleepChoice choice;
   if (!readAsleep(choice)) {
@@ -120,13 +176,10 @@ bool drawAsleep(GfxRenderer& renderer) {
   toybox::Frame frame(target, target.deviceContext(), noInput, interactions);
   toybox::Screen screen(frame);
   walletui::CardModel model;
-  model.title = card.title.c_str();
+  model.title = card.title.empty() ? "UNTITLED" : card.title.c_str();
   model.caption = card.caption.c_str();
   model.asleep = true;
-  const fui::Rect square = walletui::buildCard(screen, model);
-  if (!drawCode(renderer, square, card.payload)) {
-    walletui::buildCardFailure(screen, square, "This code holds too much to draw on the panel.");
-  }
+  showCard(renderer, screen, model, card);
   LOG_INF("CARDS", "sleep screen: %s", choice.file.c_str());
   return true;
 }

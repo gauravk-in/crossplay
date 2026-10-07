@@ -34,6 +34,7 @@ enum : fui::ActionId {
 struct ListRow {
   const char* title = "";
   const char* caption = "";  // empty: the title has the row to itself
+  bool barcode = false;      // the badge shows bars rather than a QR code
 };
 
 struct ListModel {
@@ -64,11 +65,20 @@ struct CardModel {
   // Drawn as the sleep screen: no counter, no buttons, and the room the
   // footer had goes to the code.
   bool asleep = false;
+  // A 1D barcode rather than a QR code: how many modules wide it is with its
+  // quiet zones, and the line printed under the bars.
+  int barModules = 0;
+  const char* barText = nullptr;
 };
 
 // Returns the square the code goes in. Everything around it is left white, so
-// the code always has the quiet margin a scanner looks for.
+// the code always has the quiet margin a scanner looks for. For a barcode it is
+// the bars' rectangle instead, quiet zones included, a whole number of pixels
+// per module along its length; taller than wide means the bars run across the
+// page and the barcode reads top to bottom, which is how a long code keeps
+// modules a scanner can see.
 fui::Rect buildCard(toybox::Screen& screen, const CardModel& model);
+inline bool barsRotated(const fui::Rect& bars) { return bars.height > bars.width; }
 
 // What goes in the square when the code cannot be drawn.
 void buildCardFailure(toybox::Screen& screen, const fui::Rect& square, const char* prose);

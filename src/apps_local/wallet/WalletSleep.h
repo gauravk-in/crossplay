@@ -9,6 +9,7 @@
 // The choice lives in /.crosspoint/cards-asleep.txt (wallet::AsleepChoice).
 // The moon on an open card writes it and switches the setting in one tap.
 
+#include "../ui/ToyboxScreen.h"
 #include "WalletCore.h"
 #include "WalletScreens.h"
 
@@ -22,10 +23,11 @@ bool readAsleep(AsleepChoice& out);
 bool writeAsleep(const AsleepChoice& choice);
 void clearAsleep();
 
-// Draws `payload` as a QR code centred in `square`; false when it cannot be
-// drawn at a size a scanner reads. Shared by the open card and the sleep
-// screen so the two are the same code at the same size.
-bool drawCode(GfxRenderer& renderer, const freeink::ui::Rect& square, const std::string& payload);
+// Lays out `card` with buildCard() and draws its code, QR or barcode, into the
+// space it is given, or says why it cannot. `model` carries everything but the
+// code. Shared by the open card and the sleep screen, so the two are the same
+// code at the same size.
+void showCard(GfxRenderer& renderer, toybox::Screen& screen, walletui::CardModel model, const Card& card);
 
 // Draws the chosen card into the renderer's buffer and returns true; the
 // caller puts it on the panel. False, having drawn nothing worth keeping, when

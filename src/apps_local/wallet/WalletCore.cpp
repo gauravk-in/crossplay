@@ -66,7 +66,11 @@ std::string cleanLine(const std::string& text, const size_t max) {
 
 bool parseCard(const std::string& text, Card& out) {
   size_t at = 0;
-  out.title = cleanLine(takeLine(text, at), kMaxTitle);
+  std::string title = takeLine(text, at);
+  out.kind = CodeKind::Qr;
+  const size_t tab = title.rfind('\t');
+  if (tab != std::string::npos && kindFromName(title.substr(tab + 1), out.kind)) title.resize(tab);
+  out.title = cleanLine(title, kMaxTitle);
   out.caption = cleanLine(takeLine(text, at), kMaxCaption);
   out.payload = text.substr(at < text.size() ? at : text.size());
   dropTrailingLineEnds(out.payload);
@@ -78,6 +82,10 @@ std::string formatCard(const Card& card) {
   std::string out;
   out.reserve(card.title.size() + card.caption.size() + card.payload.size() + 3);
   out += cleanLine(card.title, kMaxTitle);
+  if (card.kind != CodeKind::Qr) {
+    out += '\t';
+    out += kindName(card.kind);
+  }
   out += '\n';
   out += cleanLine(card.caption, kMaxCaption);
   out += '\n';
@@ -124,7 +132,13 @@ bool parseUpload(const std::string& body, Card& out, std::string& error) {
   out.title = cleanLine(takeLine(body, at), kMaxTitle);
   out.caption = cleanLine(takeLine(body, at), kMaxCaption);
   const std::string hex = takeLine(body, at);
+  const std::string kind = takeLine(body, at);
   out.payload.clear();
+  out.kind = CodeKind::Qr;
+  if (!kind.empty() && !kindFromName(kind, out.kind)) {
+    error = "The reader cannot draw that kind of code yet.";
+    return false;
+  }
   if (out.title.empty()) {
     error = "Give the card a title.";
     return false;
@@ -157,6 +171,24 @@ bool parseUpload(const std::string& body, Card& out, std::string& error) {
     error = "There is no code to save.";
     return false;
   }
+  if (out.kind != CodeKind::Qr) {
+    std::vector<uint8_t> modules;
+    std::string text;
+    if (!encodeBars(out.kind, out.payload, modules, text)) {
+      error = std::string("That is not a valid ") + kindLabel(out.kind) + " code.";
+      return false;
+    }
+    if (static_cast<int>(modules.size()) + 2 * kQuietModules > kMaxBarModules) {
+      error = "That barcode is too long to draw on the reader.";
+      return false;
+    }
+    // The check digit an EAN or UPC was sent without, so the file holds the
+    // number printed under the bars.
+    if (out.kind == CodeKind::Ean13 || out.kind == CodeKind::Ean8 || out.kind == CodeKind::UpcA ||
+        out.kind == CodeKind::UpcE) {
+      out.payload = text;
+    }
+  }
   return true;
 }
 
@@ -168,6 +200,8 @@ std::string formatListing(const std::vector<Card>& cards) {
     out += cleanLine(card.title, kMaxTitle);
     out += '\t';
     out += cleanLine(card.caption, kMaxCaption);
+    out += '\t';
+    out += kindName(card.kind);
     out += '\n';
   }
   return out;

@@ -14977,6 +14977,34 @@ void asleepTheCardHasNoButtonsAndTheCodeIsCentred() {
   CHECK(square.y + square.height < device().height);
 }
 
+void aBarcodeRunsAcrossThePageAtWholePixelsAndCarriesItsNumber() {
+  // EAN-13: 95 modules and two quiet zones of ten.
+  Rendered out;
+  walletui::CardModel model = cardAt(true, true, "Member since 2021");
+  model.barModules = 115;
+  model.barText = "4006381333931";
+  fui::Rect bars{};
+  build(out, [&](toybox::Screen& screen) { bars = walletui::buildCard(screen, model); });
+  CHECK(!walletui::barsRotated(bars));
+  CHECK(bars.width % 115 == 0 && bars.width / 115 >= 3);
+  CHECK(drew(out, "4006381333931") && drew(out, "Member since 2021"));
+  const fui::Rect* prev = hitFor(out, walletui::ActionPrev);
+  if (prev) CHECK(bars.y + bars.height < prev->y);
+}
+
+void aLongBarcodeTurnsDownThePageRatherThanThinning() {
+  Rendered out;
+  walletui::CardModel model = cardAt(true, true, "");
+  model.barModules = 250;  // one pixel a module across 448
+  model.barText = "MEMBER-00042-XY-LIB-2026";
+  fui::Rect bars{};
+  build(out, [&](toybox::Screen& screen) { bars = walletui::buildCard(screen, model); });
+  CHECK(walletui::barsRotated(bars));
+  CHECK(bars.height % 250 == 0 && bars.height / 250 >= 2);
+  const fui::Rect* prev = hitFor(out, walletui::ActionPrev);
+  if (prev) CHECK(bars.y + bars.height < prev->y);
+}
+
 void thePhoneScreenLeavesOneWayOut() {
   Rendered out;
   walletui::PhoneModel model;
@@ -15002,6 +15030,8 @@ int main() {
   wallettest::theMoonIsAlwaysThereAndNeverTouchesItsNeighbours();
   wallettest::asleepTheCardHasNoButtonsAndTheCodeIsCentred();
   wallettest::thePhoneScreenLeavesOneWayOut();
+  wallettest::aBarcodeRunsAcrossThePageAtWholePixelsAndCarriesItsNumber();
+  wallettest::aLongBarcodeTurnsDownThePageRatherThanThinning();
   notestest::aNoteAsleepIsReadOnlyAndTaller();
   wordletest::everyKeyIsWhereItIsDrawn();
   wordletest::aFinishedGameShowsTheAnswerAndLetsGo();
