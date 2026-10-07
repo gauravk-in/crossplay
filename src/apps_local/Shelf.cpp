@@ -41,6 +41,8 @@
 #include "sudoku/SudokuActivity.h"
 #include "toybattle/ToyBattleActivity.h"
 #include "trivia/TriviaActivity.h"
+#include "trmnl/TrmnlActivity.h"
+#include "trmnl/TrmnlIcons.h"
 #include "ui/ToyboxIcons.h"
 #include "underhand/UnderhandActivity.h"
 #include "wallet/WalletActivity.h"
@@ -101,6 +103,7 @@ constexpr shelf::Item kApps[] = {
     {"NOTES", &icon_murdle_face_clues_32, &NotesActivity::create},
     {"TASKS", &icon_gtasks_32, &GTasksActivity::create},
     {"CALENDAR", &icon_gcal_32, &GCalActivity::create},
+    {"TRMNL", &icon_trmnl_32, &TrmnlActivity::create},
 };
 
 // The two rows Home grows, in reading order. Titles are Title Case because

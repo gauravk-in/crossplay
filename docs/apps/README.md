@@ -21,6 +21,7 @@ upstream's and covers the reader, not these.
 | [`trivia.md`](trivia.md) | The question app, and where the questions come from. |
 | [`workouts.md`](workouts.md) | Schedules written on a phone, sets ticked on the reader, and the week strip. |
 | [`cards.md`](cards.md) | QR codes kept on the reader: the card files and the phone page that reads a screenshot. |
+| [`trmnl.md`](trmnl.md) | A TRMNL dashboard screen: the API it speaks, the settings, and what it does not do yet. |
 
 ## The rules a game implements
 
