@@ -20,6 +20,7 @@ upstream's and covers the reader, not these.
 | [`instapaper.md`](instapaper.md) | The read-later queue and how it syncs. |
 | [`trivia.md`](trivia.md) | The question app, and where the questions come from. |
 | [`workouts.md`](workouts.md) | Schedules written on a phone, sets ticked on the reader, and the week strip. |
+| [`cards.md`](cards.md) | QR codes kept on the reader: the card files and the phone page that reads a screenshot. |
 
 ## The rules a game implements
 

@@ -71,6 +71,7 @@ mkdir -p "$BUILD_DIR"
   ../../src/apps_local/gcal/GCalCore.cpp \
   ../../src/apps_local/gtasks/GTasksCore.cpp \
   ../../src/network/DeviceReportCore.cpp \
+  ../../src/apps_local/wallet/WalletScreens.cpp \
   ../../src/apps_local/wordle/WordleScreens.cpp \
   ../../src/apps_local/wordle/WordleCore.cpp \
   ../../src/apps_local/murdle/MurdleCast.cpp \
