@@ -8,9 +8,9 @@
 #include <vector>
 
 #include "WalletCore.h"
-#include "WalletJsqrJs.generated.h"
 #include "WalletPageHtml.generated.h"
 #include "WalletStore.h"
+#include "WalletZxingJs.generated.h"
 
 namespace {
 
@@ -46,7 +46,7 @@ bool WalletServer::begin() {
   // phone's request and the page blames the network.
   WiFi.setSleep(false);
   server_->on("/cards", HTTP_GET, [this] { handlePage(); });
-  server_->on("/cards/jsqr.js", HTTP_GET, [this] { handleDecoder(); });
+  server_->on("/cards/zxing.js", HTTP_GET, [this] { handleDecoder(); });
   server_->on("/cards/card", HTTP_GET, [this] { handleList(); });
   // PUT, not POST: this core hands one callback to both the multipart and the
   // raw paths, and a card is small enough to arrive as a plain body.
@@ -77,7 +77,7 @@ void WalletServer::handlePage() {
 }
 
 void WalletServer::handleDecoder() {
-  sendGzip(*server_, "application/javascript", WalletJsqrJs, sizeof(WalletJsqrJs), WalletJsqrJsETag);
+  sendGzip(*server_, "application/javascript", WalletZxingJs, sizeof(WalletZxingJs), WalletZxingJsETag);
 }
 
 void WalletServer::handleList() {

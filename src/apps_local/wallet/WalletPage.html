@@ -55,6 +55,8 @@ main{max-width:34rem;margin:0 auto;padding:1.6rem var(--gutter) 3rem}
 .status.bad{color:var(--ink);font-weight:700}
 .typed{width:100%;display:none}
 .typed textarea{border:2px solid var(--ink);min-height:6rem;resize:vertical;font-family:var(--mono);font-size:.9rem}
+.typed select{display:block;width:100%;margin-top:.5rem;font:inherit;color:var(--ink);background:var(--paper);
+  border:2px solid var(--ink);border-radius:0;padding:.45rem .6rem}
 .link{font-family:var(--mono);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);
   background:transparent;border:0;padding:.3rem;cursor:pointer;text-decoration:underline}
 
@@ -86,11 +88,22 @@ li .drop{flex:0 0 auto;font-family:var(--mono);font-size:.7rem;letter-spacing:.1
 <section class="card">
   <input class="title" id="title" type="text" maxlength="40" placeholder="Title: Lidl Plus, Boarding pass..." aria-label="Title">
   <div class="code">
-    <label class="pick" id="pick">Choose a screenshot or photo of the code<input id="file" type="file" accept="image/*"></label>
+    <label class="pick" id="pick">Choose a screenshot or photo of the code or barcode<input id="file" type="file" accept="image/*"></label>
     <img id="preview" alt="">
     <p class="status" id="status">The code is read here, on your phone</p>
     <div class="found" id="found"></div>
-    <div class="typed" id="typed"><textarea id="text" maxlength="1200" placeholder="The text the code holds: a link, a member number..." aria-label="The code's text"></textarea></div>
+    <div class="typed" id="typed"><textarea id="text" maxlength="1200" placeholder="The text the code holds: a link, a member number..." aria-label="The code's text"></textarea>
+      <select id="kind" aria-label="Kind of code">
+        <option value="qr">QR code</option>
+        <option value="code128">Barcode: Code 128 (most loyalty cards)</option>
+        <option value="ean13">Barcode: EAN-13 (13 digits)</option>
+        <option value="ean8">Barcode: EAN-8 (8 digits)</option>
+        <option value="upca">Barcode: UPC-A (12 digits)</option>
+        <option value="upce">Barcode: UPC-E (8 digits)</option>
+        <option value="code39">Barcode: Code 39</option>
+        <option value="itf">Barcode: ITF (an even number of digits)</option>
+        <option value="codabar">Barcode: Codabar</option>
+      </select></div>
     <button class="link" id="toggle" type="button">Type the code's text instead</button>
   </div>
   <input class="caption" id="caption" type="text" maxlength="120" placeholder="Caption, optional: member number, seat 14C..." aria-label="Caption">
@@ -102,7 +115,7 @@ li .drop{flex:0 0 auto;font-family:var(--mono);font-size:.7rem;letter-spacing:.1
 <p class="empty" id="empty" hidden>No cards yet.</p>
 <p class="foot">Served by the reader itself. The picture never leaves your phone; only the code's text is sent.</p>
 </main>
-<script src="/cards/jsqr.js"></script>
+<script src="/cards/zxing.js"></script>
 <script>
 (function () {
 // The reader's limits (WalletCore.h).
@@ -112,13 +125,33 @@ var QR_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   'x="16" y="3" rx="1"/><rect width="5" height="5" x="3" y="16" rx="1"/><path d="M21 16h-3a2 2 0 0 0-2 2v3"/>' +
   '<path d="M21 21v.01"/><path d="M12 7v3a2 2 0 0 1-2 2H7"/><path d="M3 12h.01"/><path d="M12 3h.01"/>' +
   '<path d="M12 16v.01"/><path d="M16 12h1"/><path d="M21 12v.01"/><path d="M12 21v-1"/></svg>';
+var BAR_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+  'stroke-linejoin="round" aria-hidden="true"><path d="M3 5v14"/><path d="M8 5v14"/><path d="M12 5v14"/>' +
+  '<path d="M17 5v14"/><path d="M21 5v14"/></svg>';
+
+// What the reader can draw (WalletBars.h), by the names the two decoders use.
+var KINDS = {
+  qr_code: 'qr', code_128: 'code128', code_39: 'code39', ean_13: 'ean13', ean_8: 'ean8',
+  upc_a: 'upca', upc_e: 'upce', itf: 'itf', codabar: 'codabar'
+};
+var LABELS = {
+  qr: 'QR code', code128: 'Code 128 barcode', code39: 'Code 39 barcode', ean13: 'EAN-13 barcode',
+  ean8: 'EAN-8 barcode', upca: 'UPC-A barcode', upce: 'UPC-E barcode', itf: 'ITF barcode', codabar: 'Codabar barcode'
+};
+// What they can read and the reader cannot draw yet, so the phone says what it
+// found rather than "nothing".
+var UNDRAWABLE = {
+  aztec: 'an Aztec code', pdf417: 'a PDF417 code', data_matrix: 'a Data Matrix code', code_93: 'a Code 93 barcode',
+  rss_14: 'a GS1 DataBar', rss_expanded: 'a GS1 DataBar', maxicode: 'a MaxiCode'
+};
 
 var $ = function (id) { return document.getElementById(id); };
 var titleEl = $('title'), captionEl = $('caption'), fileEl = $('file'), previewEl = $('preview');
 var statusEl = $('status'), foundEl = $('found'), typedEl = $('typed'), textEl = $('text');
 var toggleEl = $('toggle'), saveEl = $('save'), listEl = $('list'), emptyEl = $('empty'), stateEl = $('state');
+var kindEl = $('kind');
 
-var decoded = null;  // the bytes the picture's code holds, once one is found
+var decoded = null;  // { bytes, text, kind } of the picture's code, once one is found
 var typing = false;
 
 function say(msg) { stateEl.textContent = msg; }
@@ -144,6 +177,7 @@ function trimEnd(bytes) {
 }
 
 function payload() { return trimEnd(typing ? utf8(textEl.value) : (decoded ? decoded.bytes : [])); }
+function kind() { return typing ? kindEl.value : (decoded ? decoded.kind : 'qr'); }
 
 function refresh() {
   var bytes = payload();
@@ -162,21 +196,35 @@ function loadImage(file) {
   });
 }
 
+// The phone's own detector where it has one (Chrome on Android): fast, and
+// good with photos.
 function viaDetector(img) {
   if (!('BarcodeDetector' in window)) return Promise.resolve(null);
   return BarcodeDetector.getSupportedFormats().then(function (formats) {
-    if (formats.indexOf('qr_code') < 0) return null;
-    return new BarcodeDetector({ formats: ['qr_code'] }).detect(img).then(function (codes) {
+    if (!formats.length) return null;
+    return new BarcodeDetector({ formats: formats }).detect(img).then(function (codes) {
       if (!codes.length || !codes[0].rawValue) return null;
-      return { bytes: utf8(codes[0].rawValue), text: codes[0].rawValue };
+      var c = codes[0];
+      return { bytes: utf8(c.rawValue), text: c.rawValue, kind: KINDS[c.format] || null, format: c.format };
     });
   }).catch(function () { return null; });
 }
 
-// jsQR at a few sizes: a whole screenshot reads best near its own size, a
-// photo from a 12-megapixel camera faster and often better scaled down.
-function viaJsQR(img) {
-  if (!window.jsQR) return null;
+// ZXing everywhere else, at a few sizes and both ways up: a screenshot reads
+// best near its own size, a 12-megapixel photo faster and often better scaled
+// down, and a barcode photographed sideways only along its bars.
+var ZX_FORMATS = {
+  QR_CODE: 'qr_code', CODE_128: 'code_128', CODE_39: 'code_39', EAN_13: 'ean_13', EAN_8: 'ean_8', UPC_A: 'upc_a',
+  UPC_E: 'upc_e', ITF: 'itf', CODABAR: 'codabar', AZTEC: 'aztec', PDF_417: 'pdf417', DATA_MATRIX: 'data_matrix',
+  CODE_93: 'code_93', RSS_14: 'rss_14', RSS_EXPANDED: 'rss_expanded', MAXICODE: 'maxicode'
+};
+function viaZXing(img) {
+  if (!window.ZXing) return null;
+  var Z = window.ZXing;
+  var reader = new Z.MultiFormatReader();
+  var hints = new Map();
+  hints.set(Z.DecodeHintType.TRY_HARDER, true);
+  reader.setHints(hints);
   var canvas = document.createElement('canvas');
   var ctx = canvas.getContext('2d', { willReadFrequently: true });
   var long = Math.max(img.naturalWidth, img.naturalHeight), sides = [];
@@ -185,15 +233,29 @@ function viaJsQR(img) {
     if (sides.indexOf(side) < 0) sides.push(side);
   });
   for (var i = 0; i < sides.length; i++) {
-    var scale = sides[i] / long;
-    var w = Math.max(1, Math.round(img.naturalWidth * scale)), h = Math.max(1, Math.round(img.naturalHeight * scale));
-    canvas.width = w; canvas.height = h;
-    ctx.fillStyle = '#fff';
-    ctx.fillRect(0, 0, w, h);
-    ctx.drawImage(img, 0, 0, w, h);
-    var found = jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'attemptBoth' });
-    if (found && found.binaryData && found.binaryData.length) {
-      return { bytes: Array.prototype.slice.call(found.binaryData), text: found.data };
+    for (var turn = 0; turn < 2; turn++) {
+      var scale = sides[i] / long;
+      var w = Math.max(1, Math.round(img.naturalWidth * scale)), h = Math.max(1, Math.round(img.naturalHeight * scale));
+      canvas.width = turn ? h : w; canvas.height = turn ? w : h;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      if (turn) { ctx.translate(h, 0); ctx.rotate(Math.PI / 2); }
+      ctx.drawImage(img, 0, 0, w, h);
+      try {
+        var bitmap = new Z.BinaryBitmap(new Z.HybridBinarizer(new Z.HTMLCanvasElementLuminanceSource(canvas)));
+        var result = reader.decodeWithState(bitmap);
+        var format = ZX_FORMATS[Z.BarcodeFormat[result.getBarcodeFormat()]] || 'unknown';
+        var text = result.getText();
+        // A QR code in byte mode can carry bytes that are not text; ZXing
+        // keeps them as the byte segments.
+        var bytes = null, meta = result.getResultMetadata();
+        var segments = meta && meta.get(Z.ResultMetadataType.BYTE_SEGMENTS);
+        if (format === 'qr_code' && segments && segments.length === 1) bytes = Array.prototype.slice.call(segments[0]);
+        return { bytes: bytes || utf8(text), text: text, kind: KINDS[format] || null, format: format };
+      } catch (e) {
+        reader.reset();
+      }
     }
   }
   return null;
@@ -211,13 +273,18 @@ fileEl.addEventListener('change', function () {
     previewEl.style.display = 'block';
     return viaDetector(loaded.img).then(function (hit) {
       return hit || new Promise(function (resolve) {
-        // Let the status paint before jsQR holds the page for a moment.
-        setTimeout(function () { resolve(viaJsQR(loaded.img)); }, 30);
+        // Let the status paint before ZXing holds the page for a moment.
+        setTimeout(function () { resolve(viaZXing(loaded.img)); }, 30);
       });
     });
   }).then(function (hit) {
     if (!hit) {
-      status('No QR code found. Try a closer picture, or type its text instead.', true);
+      status('No code found. Try a closer picture, or type its text instead.', true);
+      return;
+    }
+    if (!hit.kind) {
+      var what = UNDRAWABLE[hit.format] || 'a kind of code';
+      status('Found ' + what + ', which the reader cannot draw yet. It says: ' + hit.text, true);
       return;
     }
     if (hit.bytes.length > MAX_PAYLOAD) {
@@ -225,12 +292,13 @@ fileEl.addEventListener('change', function () {
       return;
     }
     decoded = hit;
+    kindEl.value = hit.kind;
     typing = false;
     typedEl.style.display = 'none';
     toggleEl.textContent = "Type the code's text instead";
     foundEl.textContent = hit.text;
     foundEl.style.display = 'block';
-    status('Found a code. This is what it says:');
+    status('Found a ' + LABELS[hit.kind] + '. This is what it says:');
     refresh();
   }).catch(function () {
     status('That picture could not be opened.', true);
@@ -248,6 +316,7 @@ toggleEl.onclick = function () {
   refresh();
 };
 titleEl.addEventListener('input', refresh);
+kindEl.addEventListener('change', refresh);
 textEl.addEventListener('input', refresh);
 
 // --- Saving and the list -------------------------------------------------
@@ -266,7 +335,7 @@ saveEl.onclick = function () {
     if (x.status !== 200) { say('Not saved'); refresh(); alert(x.responseText || 'The reader refused it.'); return; }
     say('Saved');
     titleEl.value = ''; captionEl.value = ''; textEl.value = '';
-    decoded = null; typing = false; fileEl.value = '';
+    decoded = null; typing = false; fileEl.value = ''; kindEl.value = 'qr';
     previewEl.style.display = 'none'; foundEl.style.display = 'none'; typedEl.style.display = 'none';
     toggleEl.textContent = "Type the code's text instead";
     status('Saved. Add another, or tap DONE on the reader.');
@@ -274,13 +343,13 @@ saveEl.onclick = function () {
     load();
   };
   x.onerror = function () { say('Not saved'); refresh(); alert('The reader did not answer. Is it still on this screen?'); };
-  x.send(clean(titleEl.value, MAX_TITLE) + '\n' + clean(captionEl.value, 120) + '\n' + hex(bytes));
+  x.send(clean(titleEl.value, MAX_TITLE) + '\n' + clean(captionEl.value, 120) + '\n' + hex(bytes) + '\n' + kind());
 };
 
-function row(file, title, caption) {
+function row(file, title, caption, kind) {
   var li = document.createElement('li');
   var badge = document.createElement('span');
-  badge.className = 'badge'; badge.innerHTML = QR_ICON;
+  badge.className = 'badge'; badge.innerHTML = kind && kind !== 'qr' ? BAR_ICON : QR_ICON;
   var text = document.createElement('div');
   text.className = 'text';
   var name = document.createElement('div');
@@ -317,7 +386,7 @@ function load() {
     var lines = x.responseText.split('\n').filter(function (l) { return l; });
     lines.forEach(function (line) {
       var f = line.split('\t');
-      listEl.appendChild(row(f[0], f[1] || '', f[2] || ''));
+      listEl.appendChild(row(f[0], f[1] || '', f[2] || '', f[3] || 'qr'));
     });
     emptyEl.hidden = lines.length > 0;
     if (stateEl.textContent === 'Loading') say(lines.length === 1 ? '1 card' : lines.length + ' cards');
@@ -326,7 +395,7 @@ function load() {
   x.send();
 }
 
-if (!window.jsQR && !('BarcodeDetector' in window)) status('This browser cannot read codes from pictures. Type the text instead.', true);
+if (!window.ZXing && !('BarcodeDetector' in window)) status('This browser cannot read codes from pictures. Type the text instead.', true);
 load();
 })();
 </script>

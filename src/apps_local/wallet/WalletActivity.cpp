@@ -55,6 +55,7 @@ void WalletActivity::reload() {
     walletui::ListRow row;
     row.title = card.title.empty() ? "UNTITLED" : card.title.c_str();
     row.caption = card.caption.c_str();
+    row.barcode = card.kind != wallet::CodeKind::Qr;
     rows_.push_back(row);
   }
   // A card deleted from the phone page while it was on the sleep screen.
@@ -438,10 +439,7 @@ void WalletActivity::render(RenderLock&&) {
       model.hasPrev = open_ > 0;
       model.hasNext = open_ + 1 < static_cast<int>(cards_.size());
       model.shownAsleep = isShownAsleep();
-      const fui::Rect square = walletui::buildCard(screen, model);
-      if (!wallet::drawCode(renderer, square, card.payload)) {
-        walletui::buildCardFailure(screen, square, "This code holds too much to draw on the panel.");
-      }
+      wallet::showCard(renderer, screen, model, card);
       break;
     }
     case View::ConfirmDelete:

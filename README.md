@@ -91,7 +91,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Tasks**       | Your Google Tasks list: tick here, synced on refresh or on the charger.  |
 | **Workouts**    | Schedules written on your phone, sets ticked off here, the week at a glance. |
 | **Calendar**    | Google Calendar's schedule, from today on; also the sleep screen.        |
-| **Cards**       | Loyalty cards, boarding passes and links as QR codes, added from a phone screenshot. |
+| **Cards**       | Loyalty cards, boarding passes and links as QR codes or barcodes, added from a phone screenshot. |
 | **TRMNL**       | A TRMNL dashboard screen: trmnl.app or your own server, set up from a phone. |
 
 And the reader is still CrossPoint's reader: the EPUB engine, sync and the file

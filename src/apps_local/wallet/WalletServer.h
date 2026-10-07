@@ -1,6 +1,6 @@
 #pragma once
 
-// The phone page's server. GET /cards is the page, /cards/jsqr.js the decoder
+// The phone page's server. GET /cards is the page, /cards/zxing.js the decoder
 // it loads, and /cards/card lists, adds and deletes. Nothing else is routed, so
 // the address in the QR code reaches the cards and nothing else on the reader.
 //

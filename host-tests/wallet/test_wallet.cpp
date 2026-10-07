@@ -149,7 +149,7 @@ void testListing() {
   cards[1].file = "0002.txt";
   cards[1].title = "Flight";
   cards[1].caption = "Seat 14C";
-  CHECK(formatListing(cards) == "0001.txt\tLidl\t\n0002.txt\tFlight\tSeat 14C\n");
+  CHECK(formatListing(cards) == "0001.txt\tLidl\t\tqr\n0002.txt\tFlight\tSeat 14C\tqr\n");
 }
 
 void testQrVersion() {
@@ -190,6 +190,96 @@ void testAsleep() {
   CHECK(!parseAsleep("notes.txt\n", back));
 }
 
+std::string barsOf(CodeKind kind, const std::string& payload, std::string* text = nullptr) {
+  std::vector<uint8_t> modules;
+  std::string printed;
+  if (!encodeBars(kind, payload, modules, printed)) return "FAIL";
+  if (text) *text = printed;
+  std::string out;
+  for (const uint8_t m : modules) out.push_back(m ? '1' : '0');
+  return out;
+}
+
+// The encoders, against bars worked out by hand and from the standards. The
+// round trip through real decoders lives in tools_local/wallet/bars_roundtrip.sh;
+// this is what can be checked with nothing installed.
+void testBars() {
+  std::string text;
+  // EAN-13: 95 modules, guards in place, check digit filled in.
+  const std::string ean = barsOf(CodeKind::Ean13, "400638133393", &text);
+  CHECK(text == "4006381333931");
+  CHECK(ean.size() == 95);
+  CHECK(ean.compare(0, 3, "101") == 0 && ean.compare(45, 5, "01010") == 0 && ean.compare(92, 3, "101") == 0);
+  // 4 sets the parity LGLLGG...: the first left digit (0) in L is 0001101.
+  CHECK(ean.compare(3, 7, "0001101") == 0);
+  CHECK(barsOf(CodeKind::Ean13, "4006381333932") == "FAIL");  // wrong check digit
+  CHECK(barsOf(CodeKind::Ean13, "40063813339") == "FAIL");    // too short
+  CHECK(barsOf(CodeKind::Ean13, "40063813339X") == "FAIL");
+  CHECK(barsOf(CodeKind::Ean8, "9638507", &text).size() == 67 && text == "96385074");
+  CHECK(barsOf(CodeKind::UpcA, "03600029145", &text).size() == 95 && text == "036000291452");
+  // UPC-A is EAN-13 with a leading zero, bar for bar.
+  CHECK(barsOf(CodeKind::UpcA, "036000291452") == barsOf(CodeKind::Ean13, "0036000291452"));
+  CHECK(barsOf(CodeKind::UpcE, "0123456", &text).size() == 51 && text == "01234565");
+  CHECK(barsOf(CodeKind::UpcE, "01234566") == "FAIL");
+  CHECK(barsOf(CodeKind::UpcE, "2123456") == "FAIL");  // number system 0 or 1 only
+
+  // Code 128: START B "A" = 104 + 33, check (104 + 33) % 103 = 34, then stop.
+  const std::string a = barsOf(CodeKind::Code128, "A");
+  CHECK(a ==
+        "11010010000"
+        "10100011000"
+        "10001011000"
+        "1100011101011");
+  // Digits pair up in set C: 16 digits are 8 symbols, not 16.
+  CHECK(barsOf(CodeKind::Code128, "1234567890123456").size() == (1 + 8 + 1) * 11 + 13);
+  // A control character switches to set A and back.
+  CHECK(barsOf(CodeKind::Code128,
+               "ab\x1f"
+               "cd") != "FAIL");
+  CHECK(barsOf(CodeKind::Code128, "caf\xc3\xa9") == "FAIL");
+  CHECK(barsOf(CodeKind::Code128, "") == "FAIL");
+
+  CHECK(barsOf(CodeKind::Code39, "CODE39 TEST") != "FAIL");
+  CHECK(barsOf(CodeKind::Code39, "lower") == "FAIL");
+  CHECK(barsOf(CodeKind::Itf, "123456") != "FAIL");
+  CHECK(barsOf(CodeKind::Itf, "12345") == "FAIL");
+  CHECK(barsOf(CodeKind::Codabar, "A40156B", &text) != "FAIL" && text == "40156");
+  CHECK(barsOf(CodeKind::Codabar, "40156", &text) == barsOf(CodeKind::Codabar, "A40156A"));
+  CHECK(barsOf(CodeKind::Codabar, "4A0156") == "FAIL");
+  CHECK(barsOf(CodeKind::Qr, "anything") == "FAIL");
+
+  CodeKind kind;
+  CHECK(kindFromName("ean13", kind) && kind == CodeKind::Ean13);
+  CHECK(!kindFromName("aztec", kind));
+  CHECK(std::string(kindName(CodeKind::UpcE)) == "upce" && std::string(kindLabel(CodeKind::UpcE)) == "UPC-E");
+}
+
+// A barcode card's kind rides on its title line, and every card written before
+// barcodes still reads as QR.
+void testBarcodeCards() {
+  Card card;
+  card.title = "Lidl Plus";
+  card.caption = "Member";
+  card.payload = "4006381333931";
+  card.kind = CodeKind::Ean13;
+  CHECK(formatCard(card) == "Lidl Plus\tean13\nMember\n4006381333931\n");
+  Card back;
+  CHECK(parseCard(formatCard(card), back));
+  CHECK(back.title == "Lidl Plus" && back.kind == CodeKind::Ean13 && back.payload == "4006381333931");
+  CHECK(parseCard("Old card\n\nhttps://example.com\n", back) && back.kind == CodeKind::Qr);
+  // A tab before something that is not a kind is part of the title.
+  CHECK(parseCard("Gym\tpass\n\n123\n", back) && back.kind == CodeKind::Qr && back.title == "Gym pass");
+
+  std::string error;
+  CHECK(parseUpload("Lidl\n\n343030363338313333333933\nean13\n", back, error));
+  CHECK(back.kind == CodeKind::Ean13 && back.payload == "4006381333931");
+  CHECK(!parseUpload("Lidl\n\n3430\nean13\n", back, error));
+  CHECK(error == "That is not a valid EAN-13 code.");
+  CHECK(!parseUpload("Flight\n\n3430\naztec\n", back, error));
+  CHECK(error == "The reader cannot draw that kind of code yet.");
+  CHECK(parseUpload("Site\n\n3430\n", back, error) && back.kind == CodeKind::Qr);
+}
+
 }  // namespace
 
 int main() {
@@ -201,6 +291,8 @@ int main() {
   testListing();
   testQrVersion();
   testAsleep();
+  testBars();
+  testBarcodeCards();
   std::printf("%d checks, %d failed\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }
