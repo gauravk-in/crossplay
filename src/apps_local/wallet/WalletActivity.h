@@ -21,6 +21,7 @@
 #include "WalletCore.h"
 #include "WalletScreens.h"
 #include "WalletServer.h"
+#include "WalletSleep.h"
 
 class WalletActivity final : public Activity {
  public:
@@ -51,8 +52,10 @@ class WalletActivity final : public Activity {
   void startPhone();
   void stopPhone();
   void relabel();
-  // Draws the open card's code into `square`; false when it cannot be drawn.
-  bool drawCode(const freeink::ui::Rect& square, const std::string& payload) const;
+  int indexOf(const std::string& file) const;
+  bool isShownAsleep() const;
+  void toggleAsleep();
+  void takeOffSleep(const wallet::AsleepChoice& choice);
 
   std::vector<wallet::Card> cards_;
   std::vector<walletui::ListRow> rows_;

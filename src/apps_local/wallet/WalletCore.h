@@ -81,4 +81,20 @@ std::string formatListing(const std::vector<Card>& cards);
 // one, so the version this names always takes it.
 int qrVersionFor(size_t bytes, bool medium);
 
+// --- The sleep screen ----------------------------------------------------
+
+// Which card the sleep screen shows, and the sleep settings it replaced so
+// taking it off puts back what the person had. Three lines, as Notes keeps its
+// own: the card's file name, the old sleep screen mode, the old Quick Resume on
+// Timeout (0 off, 1 on). A number that is missing or unreadable is -1, nothing
+// to put back. Only a card's own file name parses, so the choice can never
+// name a path outside /cards.
+struct AsleepChoice {
+  std::string file;
+  int previousMode = -1;
+  int previousQuickResume = -1;
+};
+std::string formatAsleep(const AsleepChoice& choice);
+bool parseAsleep(const std::string& text, AsleepChoice& out);
+
 }  // namespace wallet

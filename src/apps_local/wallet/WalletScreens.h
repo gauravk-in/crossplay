@@ -26,6 +26,7 @@ enum : fui::ActionId {
   ActionDeleteConfirm = 665,
   ActionDeleteKeep = 666,
   ActionDismiss = 667,
+  ActionSleep = 668,
 };
 
 // --- The list ------------------------------------------------------------
@@ -57,6 +58,12 @@ struct CardModel {
   // PREV and NEXT are drawn only when there is a card that way.
   bool hasPrev = false;
   bool hasNext = false;
+  // This card is the one the sleep screen shows: the moon between PREV and
+  // NEXT is filled.
+  bool shownAsleep = false;
+  // Drawn as the sleep screen: no counter, no buttons, and the room the
+  // footer had goes to the code.
+  bool asleep = false;
 };
 
 // Returns the square the code goes in. Everything around it is left white, so
@@ -68,8 +75,9 @@ void buildCardFailure(toybox::Screen& screen, const fui::Rect& square, const cha
 
 // --- The delete confirm --------------------------------------------------
 
-// KEEP IT sits on the pixels NEXT had, so a second jab at the band's bin
-// during the repaint lands on nothing, and one at NEXT keeps the card.
+// KEEP IT covers the pixels the moon and NEXT had, so a second jab at the
+// band's bin during the repaint lands on nothing, and one at either keeps the
+// card.
 void buildDeleteConfirm(toybox::Screen& screen, const char* title, const char* prose);
 
 // --- The phone -----------------------------------------------------------

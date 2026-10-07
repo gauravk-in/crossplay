@@ -23,6 +23,9 @@ bool begin();
 // is skipped rather than refusing the rest.
 std::vector<Card> loadAll();
 
+// One card by its file name; false when it is gone or no longer a card.
+bool load(const std::string& file, Card& out);
+
 // How many card files there are, without reading them.
 size_t count();
 

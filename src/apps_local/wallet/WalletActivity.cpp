@@ -4,19 +4,23 @@
 #include <Logging.h>
 #include <Memory.h>
 #include <WiFi.h>
-#include <qrcode.h>
 
 #include <cstdio>
 #include <cstring>
 
+#include "../../CrossPointSettings.h"
 #include "../../DevMode.h"
 #include "../../activities/ActivityResult.h"
 #include "../../activities/network/WifiSelectionActivity.h"
 #include "../../util/DeviceHostname.h"
 #include "../../util/QrUtils.h"
 #include "../Shelf.h"
+#include "../live/LiveBridge.h"
+#include "../live/LiveEngine.h"
+#include "../live/LiveStore.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxTheme.h"
+#include "WalletSleep.h"
 #include "WalletStore.h"
 
 namespace fui = freeink::ui;
@@ -53,6 +57,99 @@ void WalletActivity::reload() {
     row.caption = card.caption.c_str();
     rows_.push_back(row);
   }
+  // A card deleted from the phone page while it was on the sleep screen.
+  if (SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::CARD) {
+    wallet::AsleepChoice choice;
+    if (wallet::readAsleep(choice) && indexOf(choice.file) < 0) takeOffSleep(choice);
+  }
+}
+
+int WalletActivity::indexOf(const std::string& file) const {
+  for (size_t i = 0; i < cards_.size(); i++) {
+    if (cards_[i].file == file) return static_cast<int>(i);
+  }
+  return -1;
+}
+
+// --- The sleep screen ----------------------------------------------------
+
+bool WalletActivity::isShownAsleep() const {
+  if (open_ < 0 || open_ >= static_cast<int>(cards_.size())) return false;
+  if (SETTINGS.sleepScreen != CrossPointSettings::SLEEP_SCREEN_MODE::CARD) return false;
+  wallet::AsleepChoice choice;
+  return wallet::readAsleep(choice) && choice.file == cards_[static_cast<size_t>(open_)].file;
+}
+
+// Puts back both settings a card replaced: the mode it replaced, unless
+// nothing was recorded or what was recorded is Card itself, and Quick Resume
+// on Timeout only when the choice recorded it.
+void WalletActivity::takeOffSleep(const wallet::AsleepChoice& choice) {
+  wallet::clearAsleep();
+  const int mode = choice.previousMode;
+  SETTINGS.sleepScreen = mode >= 0 && mode < CrossPointSettings::SLEEP_SCREEN_MODE_COUNT &&
+                                 mode != CrossPointSettings::SLEEP_SCREEN_MODE::CARD
+                             ? static_cast<uint8_t>(mode)
+                             : static_cast<uint8_t>(CrossPointSettings::SLEEP_SCREEN_MODE::DARK);
+  if (choice.previousQuickResume == 1) {
+    SETTINGS.quickResumeSleepScreen = CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN::QUICK_RESUME_AFTER_TIMEOUT;
+  } else if (choice.previousQuickResume == 0) {
+    SETTINGS.quickResumeSleepScreen = CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN::QUICK_RESUME_NEVER;
+  }
+  SETTINGS.saveToFile();
+  LOG_INF("CARDS", "%s off the sleep screen; mode back to %d", choice.file.c_str(), SETTINGS.sleepScreen);
+}
+
+void WalletActivity::toggleAsleep() {
+  if (open_ < 0 || open_ >= static_cast<int>(cards_.size())) return;
+  wallet::AsleepChoice current;
+  const bool hadChoice = wallet::readAsleep(current);
+  if (isShownAsleep()) {
+    takeOffSleep(current);
+    requestUpdate();
+    return;
+  }
+  wallet::AsleepChoice choice;
+  choice.file = cards_[static_cast<size_t>(open_)].file;
+  // Moving from one card to another keeps what the FIRST card replaced, so
+  // taking it off later still puts back the person's own screen.
+  const bool alreadyCard = SETTINGS.sleepScreen == CrossPointSettings::SLEEP_SCREEN_MODE::CARD;
+  choice.previousMode = alreadyCard ? (hadChoice ? current.previousMode : -1) : static_cast<int>(SETTINGS.sleepScreen);
+  choice.previousQuickResume =
+      alreadyCard ? (hadChoice ? current.previousQuickResume : -1) : static_cast<int>(SETTINGS.quickResumeSleepScreen);
+  if (!wallet::writeAsleep(choice)) {
+    showNotice("The SD card would not take the change. Nothing was changed.");
+    return;
+  }
+  SETTINGS.sleepScreen = CrossPointSettings::SLEEP_SCREEN_MODE::CARD;
+  // Quick resume on an idle sleep shows the last screen and skips the sleep
+  // screen, so the card would never appear on an ordinary sleep. Notes and
+  // Wallpapers make the same trade.
+  SETTINGS.quickResumeSleepScreen = CrossPointSettings::QUICK_RESUME_SLEEP_SCREEN::QUICK_RESUME_NEVER;
+  SETTINGS.saveToFile();
+  LOG_INF("CARDS", "%s on the sleep screen (replaced mode %d)", choice.file.c_str(), choice.previousMode);
+
+  // Live and a card are mutually exclusive, as Live and a note are: left on,
+  // Live would go on waking the device for pictures the card hides. The
+  // pairing is kept.
+  live::State liveState;
+  if (!live::load(liveState) || !liveState.on) {
+    requestUpdate();
+    return;
+  }
+  liveState.on = false;
+  live::save(liveState);
+  LOG_INF("CARDS", "a card is on the sleep screen, so Live is off; its pairing is kept");
+  if (!liveState.paired()) {
+    requestUpdate();
+    return;
+  }
+  // Tell the phone's page after the moon is filled in. A courtesy: a failure
+  // costs the page its "off on the reader" line and nothing else.
+  requestUpdateAndWait();
+  std::string message;
+  live::engine::RadioLease radio(message);
+  if (!radio.held()) return;
+  live::reportOff(liveState.deviceToken, message);
 }
 
 // "1/2" for the list when it runs past a page, and the top row snapped onto a
@@ -124,6 +221,7 @@ void WalletActivity::deleteOpen() {
     return;
   }
   const int was = open_;
+  // reload() takes it off the sleep screen if it was there.
   reload();
   if (cards_.empty()) {
     openList();
@@ -287,6 +385,9 @@ void WalletActivity::loop() {
     case walletui::ActionDelete:
       askDelete();
       return;
+    case walletui::ActionSleep:
+      toggleAsleep();
+      return;
     case walletui::ActionDeleteConfirm:
       deleteOpen();
       return;
@@ -307,66 +408,6 @@ void WalletActivity::loop() {
 }
 
 // --- Render --------------------------------------------------------------
-
-bool WalletActivity::drawCode(const fui::Rect& square, const std::string& payload) const {
-  if (payload.empty() || square.width <= 0) return false;
-  // The version is chosen from the capacity table, never by trial: the QR
-  // library does not check that the data fits the version it is given and
-  // writes past its buffers when it does not. M first, the level most codes
-  // at a till were printed with; L when only L holds it.
-  bool medium = true;
-  int version = wallet::qrVersionFor(payload.size(), true);
-  if (version == 0) {
-    medium = false;
-    version = wallet::qrVersionFor(payload.size(), false);
-  }
-  if (version == 0) return false;
-  auto modules = makeUniqueNoThrow<uint8_t[]>(qrcode_getBufferSize(static_cast<uint8_t>(version)));
-  if (!modules) {
-    LOG_ERR("CARDS", "OOM: QR version %d", version);
-    return false;
-  }
-  QRCode qr;
-  const uint8_t ecc = medium ? ECC_MEDIUM : ECC_LOW;
-  int8_t result;
-  // initText picks numeric or alphanumeric mode when the payload allows it, so
-  // a member number draws as a smaller code. It reads a C string, so a payload
-  // with a NUL byte in it goes through initBytes whole.
-  if (std::memchr(payload.data(), '\0', payload.size()) == nullptr) {
-    result = qrcode_initText(&qr, modules.get(), static_cast<uint8_t>(version), ecc, payload.c_str());
-  } else {
-    std::string bytes = payload;
-    result = qrcode_initBytes(&qr, modules.get(), static_cast<uint8_t>(version), ecc,
-                              reinterpret_cast<uint8_t*>(bytes.data()), static_cast<uint16_t>(bytes.size()));
-  }
-  if (result != 0) {
-    LOG_ERR("CARDS", "QR encode failed at version %d", version);
-    return false;
-  }
-  // Whole pixels per module, with two modules of white inside the square on
-  // every side on top of the page's own margin: the quiet zone a scanner
-  // needs to find the corners.
-  const int px = square.width / (qr.size + 4);
-  if (px < 2) return false;
-  const int drawn = qr.size * px;
-  const int x0 = square.x + (square.width - drawn) / 2;
-  const int y0 = square.y + (square.height - drawn) / 2;
-  for (uint8_t cy = 0; cy < qr.size; cy++) {
-    // Runs of dark modules as one rectangle each, so a row is a few fills
-    // rather than a hundred.
-    uint8_t cx = 0;
-    while (cx < qr.size) {
-      if (!qrcode_getModule(&qr, cx, cy)) {
-        cx++;
-        continue;
-      }
-      const uint8_t start = cx;
-      while (cx < qr.size && qrcode_getModule(&qr, cx, cy)) cx++;
-      renderer.fillRect(x0 + px * start, y0 + px * cy, px * (cx - start), px, true);
-    }
-  }
-  return true;
-}
 
 void WalletActivity::render(RenderLock&&) {
   renderer.clearScreen();
@@ -396,8 +437,9 @@ void WalletActivity::render(RenderLock&&) {
       model.position = position_.c_str();
       model.hasPrev = open_ > 0;
       model.hasNext = open_ + 1 < static_cast<int>(cards_.size());
+      model.shownAsleep = isShownAsleep();
       const fui::Rect square = walletui::buildCard(screen, model);
-      if (!drawCode(square, card.payload)) {
+      if (!wallet::drawCode(renderer, square, card.payload)) {
         walletui::buildCardFailure(screen, square, "This code holds too much to draw on the panel.");
       }
       break;

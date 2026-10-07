@@ -9,8 +9,24 @@ CARDS is on the shelf. It opens on the list of cards by title; tap one to show
 it. The card's title is on the band, the code fills the width under it, and the
 caption (if it has one) sits beneath. PREV and NEXT at the foot, or the Up and
 Down keys, move between cards; Back returns to the list. The bin on the band
-deletes the card on screen after a confirm, and KEEP IT sits where NEXT was, so
-a double tap keeps the card.
+deletes the card on screen after a confirm, and KEEP IT covers where the moon
+and NEXT were, so a double tap keeps the card.
+
+## On the sleep screen
+
+The moon between PREV and NEXT puts the open card on the sleep screen, so a
+boarding pass at the gate is one press of the power button away. It is outlined
+while the card is not there and filled while it is; tap it again to take the
+card off. Putting a card up sets Settings > Sleep screen to **Card** and turns
+off Quick Resume on Timeout (which would skip the sleep screen); taking it off
+puts back both settings as they were. It also turns Live off, as a note does.
+
+The card is drawn from its file each time the reader sleeps, with no counter or
+buttons and the code centred on the page. The choice is kept in
+`/.crosspoint/cards-asleep.txt`: the card's file name, then the sleep screen
+mode and Quick Resume setting it replaced. Deleting the card, on the reader or
+from the phone page, takes it off the sleep screen; if the file goes missing
+some other way, the reader shows the default sleep screen.
 
 ## Adding a card
 

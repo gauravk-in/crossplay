@@ -181,4 +181,36 @@ int qrVersionFor(const size_t bytes, const bool medium) {
   return 0;
 }
 
+std::string formatAsleep(const AsleepChoice& choice) {
+  return choice.file + "\n" + std::to_string(choice.previousMode) + "\n" + std::to_string(choice.previousQuickResume) +
+         "\n";
+}
+
+namespace {
+// Digits up to `max`, else -1: a sign or anything else reads as unknown.
+int smallNumber(std::string line, const int max) {
+  while (!line.empty() && line.back() == ' ') line.pop_back();
+  if (line.empty()) return -1;
+  int value = 0;
+  for (const char c : line) {
+    if (c < '0' || c > '9') return -1;
+    value = value * 10 + (c - '0');
+    if (value > max) return -1;
+  }
+  return value;
+}
+}  // namespace
+
+bool parseAsleep(const std::string& text, AsleepChoice& out) {
+  out = AsleepChoice{};
+  size_t at = 0;
+  std::string file = takeLine(text, at);
+  while (!file.empty() && file.back() == ' ') file.pop_back();
+  if (numberOf(file) < 0) return false;
+  out.file = file;
+  out.previousMode = smallNumber(takeLine(text, at), 255);
+  out.previousQuickResume = smallNumber(takeLine(text, at), 1);
+  return true;
+}
+
 }  // namespace wallet

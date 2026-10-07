@@ -30,6 +30,15 @@ bool begin() {
 
 size_t count() { return names().size(); }
 
+bool load(const std::string& file, Card& out) {
+  if (numberOf(file) < 0) return false;
+  std::string text;
+  if (!Storage.readFileToString("CARDS", pathOf(file), kMaxFileBytes, text)) return false;
+  if (!parseCard(text, out)) return false;
+  out.file = file;
+  return true;
+}
+
 std::vector<Card> loadAll() {
   std::vector<Card> cards;
   const std::vector<std::string> files = names();
