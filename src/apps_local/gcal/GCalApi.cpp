@@ -132,6 +132,25 @@ bool Api::calendars(const gtasks::AccessToken& token, std::vector<Calendar>& out
   return true;
 }
 
+bool Api::timeZone(const gtasks::AccessToken& token, std::string& out, std::string& message) {
+  tokenRefused = false;
+  needsConsent = false;
+  out.clear();
+  std::string response;
+  const int status = get("/calendar/v3/users/me/settings/timezone", token.value, response, message);
+  if (status == 0) return false;
+  if (refused(status, response, tokenRefused, needsConsent, message)) return false;
+  JsonDocument doc;
+  if (status != 200 || deserializeJson(doc, response) != DeserializationError::Ok) {
+    message = googleSays(response);
+    if (message.empty()) message = "Google would not say which time zone the account is in.";
+    LOG_ERR(kTag, "settings/timezone: HTTP %d", status);
+    return false;
+  }
+  out = doc["value"] | "";
+  return !out.empty();
+}
+
 bool Api::events(const gtasks::AccessToken& token, const std::string& calendarId, const int64_t timeMin,
                  const int64_t timeMax, std::vector<Event>& out, std::string& message) {
   tokenRefused = false;

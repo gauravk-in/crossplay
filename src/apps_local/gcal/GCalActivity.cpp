@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cstdio>
+#include <cstring>
 #include <ctime>
 
 #include "../../CrossPointSettings.h"
@@ -19,6 +20,7 @@
 #include "../../components/UITheme.h"
 #include "../../util/DeviceHostname.h"
 #include "../../util/QrUtils.h"
+#include "../../util/Timezones.h"
 #include "../Shelf.h"
 #include "../gtasks/GTasksScreens.h"
 #include "../ui/Toybox.h"
@@ -284,6 +286,31 @@ bool GCalActivity::ensureToken(std::string& message) {
   return false;
 }
 
+bool GCalActivity::adoptAccountZone() {
+  // 255 with the legacy offset still at UTC is "never chosen" (Timezones.h).
+  if (SETTINGS.clockTimezone < timezones::count() || SETTINGS.clockUtcOffsetQ != 48) return false;
+  std::string iana;
+  std::string message;
+  if (!api_.timeZone(token_, iana, message)) {
+    LOG_ERR(kTag, "account time zone: %s", message.c_str());
+    return false;
+  }
+  const char* zone = gcal::clockZoneForGoogle(iana);
+  if (zone == nullptr) {
+    LOG_INF(kTag, "account time zone %s has no Clock zone; set one in Settings", iana.c_str());
+    return false;
+  }
+  for (size_t i = 0; i < timezones::count(); ++i) {
+    if (std::strcmp(timezones::table()[i].name, zone) != 0) continue;
+    SETTINGS.clockTimezone = static_cast<uint8_t>(i);
+    SETTINGS.saveToFile();
+    timezones::applyToClock();
+    LOG_INF(kTag, "clock zone set to %s from the account's %s", zone, iana.c_str());
+    return true;
+  }
+  return false;
+}
+
 bool GCalActivity::sync(std::string& message, bool& changed) {
   changed = false;
   if (!ensureToken(message)) return false;
@@ -309,6 +336,7 @@ bool GCalActivity::sync(std::string& message, bool& changed) {
     consent();
     return false;
   }
+  const bool zoneChanged = adoptAccountZone();
 
   // The window is counted from the reader's own today when it knows the date,
   // else from now as Google sees it.
@@ -344,7 +372,7 @@ bool GCalActivity::sync(std::string& message, bool& changed) {
     RenderLock lock(*this);
     events_ = std::move(fresh);
   }
-  if (changed || builtFor_ != currentDay()) rebuild(keepDay);
+  if (changed || zoneChanged || builtFor_ != currentDay()) rebuild(zoneChanged ? -1 : keepDay);
   meta_.lastSyncAt = now > kClockFloor ? now : 0;
   meta_.calendars = static_cast<int>(calendars.size());
   library_.saveMeta(meta_);
