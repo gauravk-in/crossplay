@@ -8,6 +8,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
+#include <fstream>
+#include <regex>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -294,6 +297,39 @@ void testLabels() {
   CHECK_EQ(gcal::pathEncode("a/b c"), "a%2Fb%20c");
 }
 
+std::string slurp(const char* path) {
+  std::ifstream in(path);
+  std::stringstream text;
+  text << in.rdbuf();
+  return text.str();
+}
+
+// Every Google zone the reader knows lands on a zone the Clock settings list,
+// by its exact name, so adopting it can never pick nothing.
+void testAccountZones() {
+  CHECK(gcal::clockZoneForGoogle("Europe/Berlin") != nullptr);
+  checkEqual(gcal::clockZoneForGoogle("Europe/Berlin"), "Berlin / Paris / Madrid / Rome", "Berlin", __LINE__);
+  checkEqual(gcal::clockZoneForGoogle("Asia/Kolkata"), "India / Colombo", "Kolkata", __LINE__);
+  checkEqual(gcal::clockZoneForGoogle("America/New_York"), "New York / Toronto", "New York", __LINE__);
+  CHECK(gcal::clockZoneForGoogle("Mars/Olympus_Mons") == nullptr);
+  CHECK(gcal::clockZoneForGoogle("") == nullptr);
+
+  const std::string core = slurp("../../src/apps_local/gcal/GCalCore.cpp");
+  const std::string clock = slurp("../../src/util/Timezones.cpp");
+  CHECK(!core.empty() && !clock.empty());
+  const std::regex alias("\\{\"([A-Za-z_/]+)\", \"([^\"]+)\"\\}");
+  int aliases = 0;
+  for (std::sregex_iterator it(core.begin(), core.end(), alias), end; it != end; ++it) {
+    const std::string iana = (*it)[1];
+    const std::string zone = (*it)[2];
+    ++aliases;
+    const char* found = gcal::clockZoneForGoogle(iana);
+    check(found != nullptr && zone == found, iana.c_str(), __LINE__);
+    check(clock.find("{\"" + zone + "\", ") != std::string::npos, zone.c_str(), __LINE__);
+  }
+  CHECK(aliases > 100);
+}
+
 }  // namespace
 
 int main() {
@@ -310,6 +346,7 @@ int main() {
   testPaging();
   testSettingsAndMeta();
   testLabels();
+  testAccountZones();
   std::printf("gcal: %d checks, %d failed\n", checksRun, checksFailed);
   return checksFailed == 0 ? 0 : 1;
 }

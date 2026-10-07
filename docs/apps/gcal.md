@@ -43,7 +43,10 @@ that permission, and Calendar asks you to sign in again.
 
 Every calendar ticked as shown in Google Calendar appears, as on the phone,
 up to twelve. Events you declined and cancelled events are left out. Times are
-in the reader's time zone.
+in the reader's time zone, from **Settings > System > Clock**. A reader whose
+clock was never given a zone takes the Google account's on the next sync, and
+the reader's own clock follows it too; one chosen in Clock settings is never
+changed.
 
 ## On the card
 

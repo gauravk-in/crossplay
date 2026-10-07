@@ -55,6 +55,12 @@ struct LocalTime {
 };
 LocalTime toLocal(int64_t epoch);
 
+// The Clock settings' zone (its name in src/util/Timezones.cpp) for the
+// account's Google time zone ("Europe/Berlin"), or nullptr when the list has
+// no zone that keeps the same rules. A reader whose clock was never given a
+// zone takes the account's on its first sync, as a phone does.
+const char* clockZoneForGoogle(const std::string& iana);
+
 // --- Events ----------------------------------------------------------------
 
 struct Event {
