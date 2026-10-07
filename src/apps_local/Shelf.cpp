@@ -33,6 +33,8 @@
 #include "notes/NotesActivity.h"
 #include "picross/PicrossActivity.h"
 #include "player/PlayerActivity.h"
+#include "pomodoro/PomodoroActivity.h"
+#include "pomodoro/PomodoroIcons.h"
 #include "seasalt/SeaSaltActivity.h"
 #include "solitaire/SolitaireActivity.h"
 #include "study/StudyActivity.h"
@@ -88,6 +90,7 @@ constexpr shelf::Item kApps[] = {
     {"WALLPAPERS", &icon_wallpapers_32, &WallpapersActivity::create},
     {"WIKIPEDIA", &icon_wikipedia_32, &WikipediaActivity::create},
     {"CALCULATOR", &icon_calculator_32, &CalculatorActivity::create},
+    {"POMODORO", &icon_pomodoro_mark_32, &PomodoroActivity::create},
     // Card #516. The icon is the Lucide list mark borrowed from Murdle while
     // the screens are being chosen; a Notes mark comes with the real app.
     {"NOTES", &icon_murdle_face_clues_32, &NotesActivity::create},
