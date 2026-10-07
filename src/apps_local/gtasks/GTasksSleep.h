@@ -8,6 +8,11 @@
 // settings write together with the sleep screen setting.
 
 class GfxRenderer;
+namespace freeink {
+namespace ui {
+class GfxRendererTarget;
+}
+}  // namespace freeink
 
 namespace gtasks {
 
@@ -16,5 +21,9 @@ namespace gtasks {
 // when no list is chosen or the card no longer has it, so the caller can fall
 // back to the default sleep screen.
 bool drawAsleep(GfxRenderer& renderer);
+
+// Binds gtasksui::kTaskFont, the face a task's title is drawn in. Every target
+// that draws the list calls this, awake or asleep.
+void bindTaskFont(freeink::ui::GfxRendererTarget& target);
 
 }  // namespace gtasks

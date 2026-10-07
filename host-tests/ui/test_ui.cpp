@@ -14653,7 +14653,11 @@ int countOf(const Rendered& out, const fui::ActionId action) {
 // row's index in the whole list) rather than its slot on the glass. A page two
 // tap that reported slot 0 would tick page one's first task.
 void aTapOnARowNamesTheTaskNotTheSlot() {
-  const int capacity = gtasksui::listCapacity(Rendered().target, device(), true);
+  std::vector<gtasksui::Row> all(40);
+  for (auto& r : all) r.title = "Buy milk";
+  std::vector<int> starts;
+  CHECK(gtasksui::paginate(Rendered().target, device(), all.data(), 40, false, starts) >= 2);
+  const int capacity = starts.size() > 1 ? starts[1] : 0;
   CHECK(capacity >= 4);
   std::vector<gtasksui::Row> rows(static_cast<size_t>(capacity));
   for (auto& r : rows) r.title = "Buy milk";
@@ -14845,10 +14849,56 @@ void everyListIsARowThatNamesItsIndex() {
   }
 }
 
+// A title that will not fit one line takes a second, and its row grows to
+// hold it; past two lines it is cut with an ellipsis rather than mid-word. Short
+// rows stay short, so a page of them holds more than a page of long ones.
+void aLongTitleWrapsToTwoLinesAndItsRowGrows() {
+  gtasksui::Row longRow;
+  longRow.title =
+      "Call the plumber about the boiler making that noise again before the weekend and ask about the radiators";
+  gtasksui::Row shortRow;
+  shortRow.title = "Milk";
+  gtasksui::ListModel model;
+  model.title = "MY TASKS";
+  gtasksui::Row rows[2] = {longRow, shortRow};
+  model.rows = rows;
+  model.count = 2;
+  // The task cut's line box, so two lines outgrow the minimum row.
+  Rendered out;
+  out.target.lineH = 29;
+  render(out, [&](toybox::Screen& screen) { gtasksui::buildList(screen, model); });
+  fui::Rect first{};
+  fui::Rect second{};
+  CHECK(rectOf(out, gtasksui::ActionToggle, 0, first));
+  CHECK(rectOf(out, gtasksui::ActionToggle, 1, second));
+  CHECK(first.height > second.height);
+  CHECK(second.y >= first.y + first.height);
+  CHECK(drewText(out, "Call the plumber"));
+  CHECK(drewText(out, "..."));
+  CHECK(drewText(out, "Milk"));
+
+  std::vector<gtasksui::Row> shorts(40, shortRow);
+  std::vector<gtasksui::Row> longs(40, longRow);
+  std::vector<int> starts;
+  Rendered probe;
+  probe.target.lineH = 29;
+  gtasksui::paginate(probe.target, device(), shorts.data(), 40, false, starts);
+  const int perShortPage = starts.size() > 1 ? starts[1] : 40;
+  gtasksui::paginate(probe.target, device(), longs.data(), 40, false, starts);
+  const int perLongPage = starts.size() > 1 ? starts[1] : 40;
+  CHECK(perShortPage > perLongPage);
+  CHECK(perLongPage >= 1);
+}
+
 // Asleep, the list is a picture: nothing to tap, and more rows than awake.
 void asleepTheListHasNoButtonsAndMoreRoom() {
-  const int awake = gtasksui::listCapacity(Rendered().target, device(), false);
-  const int asleep = gtasksui::listCapacity(Rendered().target, device(), false, true);
+  std::vector<gtasksui::Row> all(40);
+  for (auto& r : all) r.title = "Water the plants";
+  std::vector<int> starts;
+  gtasksui::paginate(Rendered().target, device(), all.data(), 40, false, starts);
+  const int awake = starts.size() > 1 ? starts[1] : 0;
+  gtasksui::paginate(Rendered().target, device(), all.data(), 40, true, starts);
+  const int asleep = starts.size() > 1 ? starts[1] : 0;
   CHECK(asleep > awake);
   std::vector<gtasksui::Row> rows(static_cast<size_t>(asleep));
   for (auto& r : rows) r.title = "Water the plants";
@@ -15049,6 +15099,7 @@ int main() {
   gtaskstest::theMenuSitsLeftOfTheTitleAndOpensTheLists();
   gtaskstest::everyListIsARowThatNamesItsIndex();
   gtaskstest::asleepTheListHasNoButtonsAndMoreRoom();
+  gtaskstest::aLongTitleWrapsToTwoLinesAndItsRowGrows();
   notestest::aNoteAsleepIsReadOnlyAndTaller();
   wordletest::everyKeyIsWhereItIsDrawn();
   wordletest::aFinishedGameShowsTheAnswerAndLetsGo();

@@ -20,6 +20,12 @@ namespace fui = freeink::ui;
 
 namespace gtasks {
 
+void bindTaskFont(fui::GfxRendererTarget& target) {
+  // The UI face a cut down: the same voice as every other line in the app, at
+  // a size that gets a title's words onto the panel instead of its first two.
+  target.setFont(gtasksui::kTaskFont, toybox::kButtonFontId);
+}
+
 bool drawAsleep(GfxRenderer& renderer) {
   Library library;
   Asleep choice;
@@ -46,23 +52,19 @@ bool drawAsleep(GfxRenderer& renderer) {
   toybox::ensureFonts(renderer);
   renderer.clearScreen();
   fui::GfxRendererTarget target = toybox::makeTarget(renderer);
+  bindTaskFont(target);
   const fui::DeviceContext device = target.deviceContext();
 
   // A sleep screen cannot turn a page, so what does not fit is counted in the
   // page label's place, as Notes does: "1 / 3" says there is more than this.
   const int count = static_cast<int>(visible.size());
-  const int single = gtasksui::listCapacity(target, device, false, true);
-  const bool paged = count > single;
-  const int perPage = paged ? gtasksui::listCapacity(target, device, true, true) : single;
-  const int shown = count < perPage ? count : perPage;
-
   std::vector<std::string> dues;
-  dues.reserve(static_cast<size_t>(shown));
-  for (int i = 0; i < shown; ++i)
+  dues.reserve(static_cast<size_t>(count));
+  for (int i = 0; i < count; ++i)
     dues.push_back(dueLabel(tasks[static_cast<size_t>(visible[static_cast<size_t>(i)])].due));
   std::vector<gtasksui::Row> rows;
-  rows.reserve(static_cast<size_t>(shown));
-  for (int i = 0; i < shown; ++i) {
+  rows.reserve(static_cast<size_t>(count));
+  for (int i = 0; i < count; ++i) {
     const Task& t = tasks[static_cast<size_t>(visible[static_cast<size_t>(i)])];
     gtasksui::Row row;
     row.title = t.title.c_str();
@@ -76,14 +78,18 @@ bool drawAsleep(GfxRenderer& renderer) {
   int open = 0;
   for (const int i : visible) open += tasks[static_cast<size_t>(i)].pending ? 0 : 1;
   std::snprintf(status, sizeof(status), "%d OPEN", open);
+  std::vector<int> starts;
+  const int pages = gtasksui::paginate(target, device, rows.data(), count, true, starts);
+  const bool paged = pages > 1;
+  const int shown = paged ? starts[1] : count;
   char label[16] = "";
-  if (paged) std::snprintf(label, sizeof(label), "1 / %d", (count + perPage - 1) / perPage);
+  if (paged) std::snprintf(label, sizeof(label), "1 / %d", pages);
 
   gtasksui::ListModel model;
   model.title = title.c_str();
   model.status = status;
   model.rows = rows.empty() ? nullptr : rows.data();
-  model.count = static_cast<int>(rows.size());
+  model.count = shown;
   model.pageLabel = paged ? label : nullptr;
   model.asleep = true;
   if (count == 0 && !tasks.empty()) {

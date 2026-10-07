@@ -143,7 +143,8 @@ class GTasksActivity final : public Activity {
   bool yieldedDevMode_ = false;
 
   int page_ = 0;
-  int perPage_ = 1;
+  int pages_ = 1;                // as of the last paint of the list
+  std::vector<int> pageStarts_;  // first row of each page, ditto
   // Owned here because the screen model holds pointers.
   std::vector<gtasksui::Row> rows_;
   std::vector<std::string> dueLabels_;
