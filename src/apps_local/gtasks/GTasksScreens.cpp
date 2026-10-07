@@ -11,13 +11,16 @@ namespace {
 
 constexpr int kBodyTop = toybox::kBodyTop;
 constexpr int kFooterHeight = toybox::kPillHeight;
-// Notes' box and strike, so a ticked line reads the same in both apps.
-constexpr int16_t kBoxSide = 40;
+// Notes' strike, so a ticked line reads the same in both apps. The box is a
+// size under Notes' because the text beside it is.
+constexpr int16_t kBoxSide = 32;
 constexpr int16_t kStrike = 2;
 // A subtask's indent: one box and its gap, so the child's box sits under the
 // parent's text.
 constexpr int16_t kIndent = kBoxSide / 2 + toybox::kGutter;
-constexpr int16_t kMinRow = 72;  // a finger, with room to miss
+constexpr int16_t kMinRow = 56;  // a finger, with room to miss
+constexpr int16_t kRowPad = 8;   // above and below a row's text
+constexpr int kTitleLines = 2;
 
 fui::TextStyle plain(const fui::FontId font, const fui::TextAlign align = fui::TextAlign::Left,
                      const fui::Color color = fui::Color::Black, const uint8_t maxLines = 1) {
@@ -90,9 +93,45 @@ fui::Rect listBand(const fui::DrawTarget& target, const fui::DeviceContext& devi
                        static_cast<int16_t>(bottom - toybox::kGutter * 2 - label - kBodyTop));
 }
 
-int16_t rowPitch(const fui::DrawTarget& target) {
-  const int16_t natural = static_cast<int16_t>(target.lineHeight(toybox::kBodyFont) +
-                                               target.lineHeight(toybox::kTileFont) + toybox::kGutter);
+int16_t textX(const fui::Rect& row, const bool child) {
+  return static_cast<int16_t>(row.x + (child ? kIndent : 0) + kBoxSide + toybox::kGutter);
+}
+
+// A title in at most kTitleLines lines, each line its own string so a strike
+// can match each line's ink. The fit is fitLines()'s; the split repeats its
+// greedy wrap on the fitted text, which therefore always comes out in as many
+// lines as fitLines allowed.
+std::vector<std::string> titleLines(const fui::DrawTarget& target, const char* title, const int16_t width) {
+  const fui::TextStyle style = plain(kTaskFont);
+  const std::string fitted = toybox::fitLines(target, title, width, kTitleLines, style);
+  std::vector<std::string> out;
+  out.reserve(kTitleLines);
+  std::string line;
+  size_t i = 0;
+  while (i < fitted.size()) {
+    const size_t space = fitted.find(' ', i);
+    const size_t end = space == std::string::npos ? fitted.size() : space;
+    const std::string word = fitted.substr(i, end - i);
+    const std::string candidate = line.empty() ? word : line + " " + word;
+    if (line.empty() || target.measureText(style.font, candidate.c_str(), style).width <= width ||
+        static_cast<int>(out.size()) + 1 >= kTitleLines) {
+      line = candidate;
+    } else {
+      out.push_back(line);
+      line = word;
+    }
+    i = end + 1;
+  }
+  if (!line.empty() || out.empty()) out.push_back(line);
+  return out;
+}
+
+int16_t rowHeight(const fui::DrawTarget& target, const int16_t bandWidth, const Row& r) {
+  const fui::Rect probe = fui::makeRect(0, 0, bandWidth, 0);
+  const int16_t width = static_cast<int16_t>(bandWidth - textX(probe, r.child));
+  const int lines = static_cast<int>(titleLines(target, r.title, width).size());
+  const int16_t dueH = r.due != nullptr ? target.lineHeight(toybox::kTileFont) : 0;
+  const int16_t natural = static_cast<int16_t>(lines * target.lineHeight(kTaskFont) + dueH + 2 * kRowPad);
   return natural > kMinRow ? natural : kMinRow;
 }
 
@@ -141,35 +180,61 @@ void drawRow(toybox::Screen& screen, const fui::Rect& row, const Row& r) {
                                       static_cast<int16_t>(row.y + (row.height - kBoxSide) / 2), kBoxSide, kBoxSide);
   tickBox(screen, box, r.checked);
 
-  const int16_t textX = static_cast<int16_t>(box.x + kBoxSide + toybox::kGutter);
-  const int16_t textW = static_cast<int16_t>(row.x + row.width - textX);
-  const fui::TextStyle title = plain(toybox::kBodyFont);
+  const int16_t x = textX(row, r.child);
+  const int16_t textW = static_cast<int16_t>(row.x + row.width - x);
+  const fui::TextStyle title = plain(kTaskFont);
   const fui::TextStyle due = plain(toybox::kTileFont, fui::TextAlign::Left, fui::Color::DarkGray);
-  const int16_t titleH = screen.target().lineHeight(title.font);
+  const int16_t lineH = screen.target().lineHeight(title.font);
   const int16_t dueH = r.due != nullptr ? screen.target().lineHeight(due.font) : 0;
-  const int16_t top = static_cast<int16_t>(row.y + (row.height - titleH - dueH) / 2);
+  const std::vector<std::string> lines = titleLines(screen.target(), r.title, textW);
+  const int16_t textH = static_cast<int16_t>(static_cast<int>(lines.size()) * lineH + dueH);
+  int16_t y = static_cast<int16_t>(row.y + (row.height - textH) / 2);
 
-  const std::string line = toybox::fitLines(screen.target(), r.title, textW, 1, title);
-  screen.target().text(fui::makeRect(textX, top, textW, titleH), line.c_str(), title);
-  if (r.checked && !line.empty()) {
-    // A strike as wide as the ink, not the row: a tick that is waiting to go
-    // up still reads as done, which is what the person did.
-    const int16_t inkW = screen.target().measureText(title.font, line.c_str(), title).width;
-    screen.target().fill(fui::makeRect(textX, static_cast<int16_t>(top + titleH / 2), inkW, kStrike),
-                         fui::Paint::solid(fui::Color::Black));
+  for (const std::string& line : lines) {
+    screen.target().text(fui::makeRect(x, y, textW, lineH), line.c_str(), title);
+    if (r.checked && !line.empty()) {
+      // A strike as wide as the ink, not the row: a tick that is waiting to go
+      // up still reads as done, which is what the person did.
+      const int16_t inkW = screen.target().measureText(title.font, line.c_str(), title).width;
+      screen.target().fill(fui::makeRect(x, static_cast<int16_t>(y + lineH / 2), inkW, kStrike),
+                           fui::Paint::solid(fui::Color::Black));
+    }
+    y = static_cast<int16_t>(y + lineH);
   }
-  if (r.due != nullptr) {
-    screen.target().text(fui::makeRect(textX, static_cast<int16_t>(top + titleH), textW, dueH), r.due, due);
-  }
+  if (r.due != nullptr) screen.target().text(fui::makeRect(x, y, textW, dueH), r.due, due);
 }
 
 }  // namespace
 
 // --- The list --------------------------------------------------------------
 
-int listCapacity(const fui::DrawTarget& target, const fui::DeviceContext& device, const bool paged, const bool asleep) {
-  const int capacity = listBand(target, device, paged, asleep).height / rowPitch(target);
-  return capacity < 1 ? 1 : capacity;
+int paginate(const fui::DrawTarget& target, const fui::DeviceContext& device, const Row* rows, const int count,
+             const bool asleep, std::vector<int>& starts) {
+  starts.clear();
+  starts.push_back(0);
+  if (rows == nullptr || count <= 0) return 1;
+  const int16_t width = listBand(target, device, false, asleep).width;
+  std::vector<int16_t> heights;
+  heights.reserve(static_cast<size_t>(count));
+  int total = 0;
+  for (int i = 0; i < count; ++i) {
+    heights.push_back(rowHeight(target, width, rows[i]));
+    total += heights.back();
+  }
+  if (total <= listBand(target, device, false, asleep).height) return 1;
+
+  // More than a page: the page label takes its strip, and each page holds the
+  // rows that fit. A row taller than a page still gets a page of its own.
+  const int room = listBand(target, device, true, asleep).height;
+  int used = 0;
+  for (int i = 0; i < count; ++i) {
+    if (used > 0 && used + heights[static_cast<size_t>(i)] > room) {
+      starts.push_back(i);
+      used = 0;
+    }
+    used += heights[static_cast<size_t>(i)];
+  }
+  return static_cast<int>(starts.size());
 }
 
 void buildList(toybox::Screen& screen, const ListModel& model) {
@@ -211,10 +276,14 @@ void buildList(toybox::Screen& screen, const ListModel& model) {
     return;
   }
 
-  const int16_t pitch = rowPitch(screen.target());
+  int16_t y = band.y;
   for (int i = 0; i < model.count; ++i) {
-    const fui::Rect row = fui::makeRect(band.x, static_cast<int16_t>(band.y + i * pitch), band.width, pitch);
-    if (row.y + row.height > band.y + band.height) break;
+    const int16_t h = rowHeight(screen.target(), band.width, model.rows[i]);
+    const fui::Rect row = fui::makeRect(band.x, y, band.width, h);
+    // A row taller than the whole band is drawn anyway, clipped, rather than
+    // leaving its page blank.
+    if (i > 0 && row.y + row.height > band.y + band.height) break;
+    y = static_cast<int16_t>(y + h);
     drawRow(screen, row, model.rows[i]);
     if (i + 1 < model.count) separator(screen, row);
     if (!model.asleep) rowHit(screen, row, model.firstIndex + i);

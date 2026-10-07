@@ -24,6 +24,7 @@
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxIcons.h"
 #include "../ui/ToyboxTheme.h"
+#include "GTasksSleep.h"
 
 namespace {
 
@@ -521,8 +522,9 @@ void GTasksActivity::toggle(const int row) {
 }
 
 void GTasksActivity::stepPage(const int delta) {
-  const int count = static_cast<int>(visibleRows().size());
-  const int pages = perPage_ > 0 ? (count + perPage_ - 1) / perPage_ : 1;
+  // Where the pages break is the last paint's: rows are as tall as their
+  // titles wrap, which only a measured layout knows.
+  const int pages = pages_;
   const int next = page_ + delta;
   // Clamped, never wrapped: a wrap lands on a page that looks like any other.
   if (next < 0 || next >= pages) return;
@@ -807,6 +809,7 @@ void GTasksActivity::loop() {
 void GTasksActivity::render(RenderLock&&) {
   renderer.clearScreen();
   fui::GfxRendererTarget target = toybox::makeTarget(renderer);
+  gtasks::bindTaskFont(target);
   const fui::DeviceContext device = target.deviceContext();
   const fui::InputSnapshot noInput{};
   interactionsReady_ = false;
@@ -914,24 +917,19 @@ void GTasksActivity::render(RenderLock&&) {
     case Phase::List: {
       const std::vector<int> visible = visibleRows();
       const int count = static_cast<int>(visible.size());
-      const int single = gtasksui::listCapacity(target, device, false);
-      const bool paged = count > single;
-      perPage_ = paged ? gtasksui::listCapacity(target, device, true) : single;
-      const int pages = (count + perPage_ - 1) / perPage_;
-      if (page_ >= pages) page_ = pages > 0 ? pages - 1 : 0;
-      const int first = page_ * perPage_;
-      const int shown = count - first < perPage_ ? count - first : perPage_;
 
+      // Every visible row, not just this page's: a row is as tall as its title
+      // wraps, so where the pages break depends on all of them.
       rows_.clear();
       dueLabels_.clear();
-      rows_.reserve(static_cast<size_t>(shown > 0 ? shown : 0));
+      rows_.reserve(static_cast<size_t>(count));
       dueLabels_.reserve(rows_.capacity());
-      for (int i = 0; i < shown; ++i) {
-        const gtasks::Task& t = tasks_[static_cast<size_t>(visible[static_cast<size_t>(first + i)])];
+      for (int i = 0; i < count; ++i) {
+        const gtasks::Task& t = tasks_[static_cast<size_t>(visible[static_cast<size_t>(i)])];
         dueLabels_.push_back(gtasks::dueLabel(t.due));
       }
-      for (int i = 0; i < shown; ++i) {
-        const gtasks::Task& t = tasks_[static_cast<size_t>(visible[static_cast<size_t>(first + i)])];
+      for (int i = 0; i < count; ++i) {
+        const gtasks::Task& t = tasks_[static_cast<size_t>(visible[static_cast<size_t>(i)])];
         gtasksui::Row row;
         row.title = t.title.c_str();
         row.due = dueLabels_[static_cast<size_t>(i)].empty() ? nullptr : dueLabels_[static_cast<size_t>(i)].c_str();
@@ -939,6 +937,12 @@ void GTasksActivity::render(RenderLock&&) {
         row.child = gtasks::isChild(t, tasks_);
         rows_.push_back(row);
       }
+      const int pages = gtasksui::paginate(target, device, rows_.data(), count, false, pageStarts_);
+      pages_ = pages;
+      const bool paged = pages > 1;
+      if (page_ >= pages) page_ = pages - 1;
+      const int first = pageStarts_[static_cast<size_t>(page_)];
+      const int shown = (page_ + 1 < pages ? pageStarts_[static_cast<size_t>(page_ + 1)] : count) - first;
 
       // The band's one fact, in order of what a glance needs: ticks that have
       // not gone up, a charger poll that cannot get through, the charger
@@ -969,8 +973,8 @@ void GTasksActivity::render(RenderLock&&) {
       gtasksui::ListModel model;
       model.title = title.c_str();
       model.status = status_[0] != '\0' ? status_ : nullptr;
-      model.rows = rows_.empty() ? nullptr : rows_.data();
-      model.count = static_cast<int>(rows_.size());
+      model.rows = rows_.empty() ? nullptr : rows_.data() + first;
+      model.count = shown;
       model.firstIndex = first;
       model.pageLabel = paged ? pageLabel_ : nullptr;
       model.canPagePrev = page_ > 0;

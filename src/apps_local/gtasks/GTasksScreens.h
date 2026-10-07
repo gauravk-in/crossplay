@@ -9,12 +9,19 @@
 // device looks like a list whichever app it came from.
 
 #include <cstdint>
+#include <vector>
 
 #include "../ui/ToyboxScreen.h"
 
 namespace gtasksui {
 
 namespace fui = freeink::ui;
+
+// A task's title. The Toybox target has three named slots and all three are
+// spoken for on this screen, so the titles take the fourth (GfxRendererTarget's
+// FONT_LABEL), which the Activity and the sleep screen bind with
+// gtasks::bindTaskFont().
+constexpr fui::FontId kTaskFont = 3;
 
 // Chess uses 1-4, the link layer the 200s, Hacker News the 300s, Instapaper the
 // 320s, Notes the 340s. Google Tasks takes the 360s.
@@ -73,9 +80,12 @@ struct ListModel {
 
 void buildList(toybox::Screen& screen, const ListModel& model);
 
-// How many rows one page holds. Asked of the same layout the drawing uses, so
-// the page label, the side keys and the drawn rows cannot disagree.
-int listCapacity(const fui::DrawTarget& target, const fui::DeviceContext& device, bool paged, bool asleep = false);
+// Where each page starts, for `rows` (the whole list). Rows are as tall as
+// their title, one line or two, so a page holds as many as fit. Asked of the
+// same layout the drawing uses, so the page label, the side keys and the drawn
+// rows cannot disagree. Returns the page count; `starts` is never empty.
+int paginate(const fui::DrawTarget& target, const fui::DeviceContext& device, const Row* rows, int count, bool asleep,
+             std::vector<int>& starts);
 
 // --- The list switcher -----------------------------------------------------
 
