@@ -258,6 +258,8 @@ State parseState(const std::string& text) {
       state.refreshRate = clampInt(std::strtol(value.c_str(), nullptr, 10), 0, 7 * 86400);
     } else if (key == "message") {
       state.message = value;
+    } else if (key == "key_for") {
+      state.keyFor = value;
     }
   }
   return state;
@@ -270,6 +272,7 @@ std::string formatState(const State& state) {
   out += "filename=" + cleanValue(state.filename) + "\n";
   out += "refresh_rate=" + std::to_string(state.refreshRate) + "\n";
   out += "message=" + cleanValue(state.message) + "\n";
+  out += "key_for=" + cleanValue(state.keyFor) + "\n";
   return out;
 }
 
@@ -321,6 +324,36 @@ std::string formatMac(const uint8_t mac[6]) {
 
 std::string effectiveDeviceId(const Config& config, const std::string& mac) {
   return config.deviceId.empty() ? mac : config.deviceId;
+}
+
+bool usableDeviceId(const std::string& id) {
+  for (const char c : id) {
+    if (c != '0' && c != ':' && c != '-' && c != ' ') return true;
+  }
+  return false;
+}
+
+bool keyBelongsTo(const Config& config, const State& state, const std::string& deviceId) {
+  return !config.apiKey.empty() && state.keyFor == deviceId;
+}
+
+bool applyPhoneSave(const Config& before, Config& after, State& state, const std::string& mac) {
+  bool rewrite = false;
+  const std::string id = effectiveDeviceId(after, mac);
+  const bool newKey = after.apiKey != before.apiKey;
+  if (before.server != after.server || effectiveDeviceId(before, mac) != id) {
+    state.friendlyId.clear();
+    state.filename.clear();
+    state.refreshRate = 0;
+    if (!newKey && !after.apiKey.empty()) {
+      after.apiKey.clear();
+      rewrite = true;
+    }
+  }
+  if (newKey) state.keyFor = after.apiKey.empty() ? std::string() : id;
+  if (before.orientation != after.orientation) state.filename.clear();
+  state.message.clear();
+  return rewrite;
 }
 
 int requestWidth(const Orientation orientation) {
