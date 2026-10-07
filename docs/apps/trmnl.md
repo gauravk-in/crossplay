@@ -24,6 +24,12 @@ GET <image_url>                                         -> a BMP or a PNG
 - A BMP is kept as it came. A PNG is converted to a 1-bit BMP fitted to the
   requested size, on the card, before it replaces the old picture.
 - `reset_firmware: true` drops the saved key, so the next exchange runs setup.
+- A key belongs to the device ID it was issued for (`key_for` in `state.txt`).
+  A key held under any other ID is dropped before use, and a phone save that
+  changes the server or the ID without bringing a new key drops it too.
+- The MAC is read from eFuse, not from the radio, which reports all zeros until
+  it has started. An all-zero ID is refused rather than sent.
+- Back stops a fetch that is waiting on the network.
 
 `TrmnlCore` holds all of that apart from the radio and is what
 `host-tests/trmnl` checks.

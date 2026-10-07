@@ -67,6 +67,9 @@ struct State {
   std::string filename;  // the server's name for the picture on the card
   int refreshRate = 0;   // the server's last refresh_rate, seconds
   std::string message;   // the last failure, for the phone page and the home screen
+  // The device ID the API key was issued for. A key only speaks for the device
+  // it came with, so a key held under any other ID is dropped before use.
+  std::string keyFor;
 };
 State parseState(const std::string& text);
 std::string formatState(const State& state);
@@ -88,6 +91,18 @@ std::string resolveUrl(const std::string& server, const std::string& url);
 std::string formatMac(const uint8_t mac[6]);
 // What the reader sends as ID: the configured one, else the MAC.
 std::string effectiveDeviceId(const Config& config, const std::string& mac);
+// False for an empty MAC or the all-zero one a radio reports before it starts:
+// sending that as ID would hand the reader whichever device first claimed it.
+bool usableDeviceId(const std::string& id);
+
+// Whether the saved key may be sent as `deviceId`'s Access-Token.
+bool keyBelongsTo(const Config& config, const State& state, const std::string& deviceId);
+
+// What a save from the phone does to the rest. Another server or another ID is
+// another device: its key, name and last picture go, unless the same save also
+// brought a new key, which is then taken as that device's. True when `after`
+// was changed and needs writing back.
+bool applyPhoneSave(const Config& before, Config& after, State& state, const std::string& mac);
 
 // Logical width and height to ask the server for.
 int requestWidth(Orientation orientation);

@@ -83,7 +83,9 @@ void testState() {
   state.filename = "plugin-2025-10-06T14:05:00";
   state.refreshRate = 900;
   state.message = "The server said: Device not found.";
+  state.keyFor = "AA:BB:CC:00:11:22";
   const State back = parseState(formatState(state));
+  CHECK(back.keyFor == state.keyFor);
   CHECK(back.friendlyId == state.friendlyId);
   CHECK(back.filename == state.filename);
   CHECK(back.refreshRate == 900);
@@ -125,12 +127,78 @@ void testDeviceId() {
   CHECK(requestWidth(Orientation::PortraitFlipped) == 480 && requestHeight(Orientation::PortraitFlipped) == 800);
 }
 
+void testKeysFollowTheDevice() {
+  CHECK(!usableDeviceId(""));
+  CHECK(!usableDeviceId("00:00:00:00:00:00"));
+  CHECK(usableDeviceId("DC:DA:0C:12:34:56"));
+  CHECK(usableDeviceId("my-reader"));
+
+  Config config;
+  config.apiKey = "k";
+  State state;
+  // A key saved before the reader recorded whose it was is not trusted.
+  CHECK(!keyBelongsTo(config, state, "DC:DA:0C:12:34:56"));
+  state.keyFor = "00:00:00:00:00:00";
+  CHECK(!keyBelongsTo(config, state, "DC:DA:0C:12:34:56"));
+  state.keyFor = "DC:DA:0C:12:34:56";
+  CHECK(keyBelongsTo(config, state, "DC:DA:0C:12:34:56"));
+
+  const std::string mac = "DC:DA:0C:12:34:56";
+  // A new ID with the old key: the key goes, and so does the old device's name.
+  {
+    Config before;
+    before.apiKey = "peters";
+    Config after = before;
+    after.deviceId = "AA:AA:AA:AA:AA:AA";
+    State s;
+    s.friendlyId = "PETER1";
+    s.keyFor = mac;
+    s.filename = "x";
+    CHECK(applyPhoneSave(before, after, s, mac));
+    CHECK(after.apiKey.empty());
+    CHECK(s.friendlyId.empty() && s.filename.empty());
+  }
+  // A new ID with a new key: the key is taken as the new ID's.
+  {
+    Config before;
+    before.apiKey = "old";
+    Config after = before;
+    after.deviceId = "AA:AA:AA:AA:AA:AA";
+    after.apiKey = "new";
+    State s;
+    CHECK(!applyPhoneSave(before, after, s, mac));
+    CHECK(after.apiKey == "new");
+    CHECK(s.keyFor == "AA:AA:AA:AA:AA:AA");
+  }
+  // A new key alone belongs to the reader's own ID.
+  {
+    Config before;
+    Config after = before;
+    after.apiKey = "typed";
+    State s;
+    applyPhoneSave(before, after, s, mac);
+    CHECK(s.keyFor == mac);
+  }
+  // Nothing about the device changed: the key stays.
+  {
+    Config before;
+    before.apiKey = "k";
+    Config after = before;
+    after.refreshMinutes = 5;
+    State s;
+    s.keyFor = mac;
+    s.filename = "keep";
+    CHECK(!applyPhoneSave(before, after, s, mac));
+    CHECK(after.apiKey == "k" && s.keyFor == mac && s.filename == "keep");
+  }
+}
+
 void testDisplayReply() {
   // TRMNL's own shape.
-  const DisplayReply cloud = parseDisplay(
-      R"({"status":0,"image_url":"https:\/\/trmnl.s3.us-east-2.amazonaws.com\/plugin-2025.bmp",)"
-      R"("filename":"plugin-2025","refresh_rate":900,"reset_firmware":false,"update_firmware":false,)"
-      R"("firmware_url":null,"special_function":"sleep"})");
+  const DisplayReply cloud =
+      parseDisplay(R"({"status":0,"image_url":"https:\/\/trmnl.s3.us-east-2.amazonaws.com\/plugin-2025.bmp",)"
+                   R"("filename":"plugin-2025","refresh_rate":900,"reset_firmware":false,"update_firmware":false,)"
+                   R"("firmware_url":null,"special_function":"sleep"})");
   CHECK(cloud.ok);
   CHECK(cloud.status == 0);
   CHECK(cloud.imageUrl == "https://trmnl.s3.us-east-2.amazonaws.com/plugin-2025.bmp");
@@ -140,9 +208,9 @@ void testDisplayReply() {
 
   // A self-hosted server: status 200, a quoted rate, a path for the image,
   // nested values in front of the ones we want.
-  const DisplayReply local = parseDisplay(
-      R"({ "meta": {"image_url": "wrong", "list": [1, {"x": "]"}]}, "status": 200,)"
-      R"( "refresh_rate": "300", "image_url": "/assets/screens/A1B2.png", "filename": "A1B2.png" })");
+  const DisplayReply local =
+      parseDisplay(R"({ "meta": {"image_url": "wrong", "list": [1, {"x": "]"}]}, "status": 200,)"
+                   R"( "refresh_rate": "300", "image_url": "/assets/screens/A1B2.png", "filename": "A1B2.png" })");
   CHECK(local.ok);
   CHECK(local.imageUrl == "/assets/screens/A1B2.png");
   CHECK(local.refreshRate == 300);
@@ -229,6 +297,7 @@ int main() {
   testNormalizeServer();
   testResolveUrl();
   testDeviceId();
+  testKeysFollowTheDevice();
   testDisplayReply();
   testSetupReply();
   testSniff();

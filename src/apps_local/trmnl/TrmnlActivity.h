@@ -49,12 +49,17 @@ class TrmnlActivity final : public Activity {
  private:
   enum class View : uint8_t { Home, Screen, Phone, Notice, Busy };
 
+  // render() runs on its own task and reads everything below, so loop()
+  // changes it only under a RenderLock. A fetch works on copies and swaps them
+  // in at the end, which keeps the lock off the radio's time.
   void loadConfig();
   void saveState();
-  std::string deviceId() const;
+  std::string deviceId() const { return idFor(config_); }
+  std::string idFor(const trmnl::Config& config) const;
 
-  void openHome();
-  void openScreen();
+  void setView(View view);
+  void openHome() { setView(View::Home); }
+  void openScreen() { setView(View::Screen); }
   void showNotice(const std::string& text);
   // Asks for the next picture on the next pass of loop(), after the screen
   // saying so has been drawn. `fromTap` may offer the Wi-Fi picker; a timed
@@ -63,12 +68,17 @@ class TrmnlActivity final : public Activity {
   void runFetch();
   // One whole exchange: setup if there is no key, display, the picture.
   // False with `why` set when it did not end in a picture on the card.
-  bool exchange(bool& changed, std::string& why);
-  bool fetchJson(const std::string& url, const char* path, std::string& body, std::string& why);
-  bool storePicture(std::string& why);
+  // `staged` is the card path of the new picture, moved over the old one by
+  // the caller under the lock.
+  bool exchange(trmnl::Config& config, trmnl::State& state, bool& changed, std::string& staged, std::string& why);
+  bool fetchJson(const trmnl::Config& config, const trmnl::State& state, const std::string& url, std::string& body,
+                 std::string& why);
+  bool storePicture(const trmnl::Config& config, std::string& staged, std::string& why);
+  // Reads input while a fetch waits, so Back can stop it.
+  void pumpDuringFetch();
   bool joinWifi(std::string& why);
   void releaseWifi();
-  void schedule(bool succeeded);
+  void schedule(bool succeeded);  // caller holds the RenderLock
 
   void startPhone();
   void stopPhone();
@@ -91,7 +101,7 @@ class TrmnlActivity final : public Activity {
   // Fetching.
   bool fetchQueued_ = false;
   bool fetchFromTap_ = false;
-  bool fetchFailedVisibly_ = false;
+  bool cancelFetch_ = false;
   bool broughtRadioUp_ = false;
   bool yieldedDevMode_ = false;
   int failures_ = 0;

@@ -8,6 +8,9 @@
 #include <Memory.h>
 #include <PngToBmpConverter.h>
 #include <WiFi.h>
+#if !defined(SIMULATOR)
+#include <esp_mac.h>
+#endif
 
 #ifndef SIMULATOR
 #include <BatteryMonitor.h>
@@ -106,16 +109,21 @@ void TrmnlActivity::onEnter() {
 #ifdef SIMULATOR
   mac_ = "5E:AD:00:00:00:01";
 #else
+  // From eFuse: WiFi.macAddress() reads all zeros until the radio has started,
+  // and an all-zero ID gets whatever device a server first saw under it.
   uint8_t mac[6] = {};
-  WiFi.macAddress(mac);
+  if (esp_read_mac(mac, ESP_MAC_WIFI_STA) != ESP_OK) WiFi.macAddress(mac);
   mac_ = trmnl::formatMac(mac);
 #endif
   if (!trmnl::store::begin()) {
     showNotice("The card would not open, so nothing can be saved.");
     return;
   }
-  loadConfig();
-  state_ = trmnl::parseState(trmnl::store::read(trmnl::store::kStatePath, kStateMax));
+  {
+    RenderLock lock(*this);
+    loadConfig();
+    state_ = trmnl::parseState(trmnl::store::read(trmnl::store::kStatePath, kStateMax));
+  }
   // Somebody who has set this up came here for the picture.
   if (configured_) {
     openScreen();
@@ -145,7 +153,7 @@ void TrmnlActivity::saveState() {
   }
 }
 
-std::string TrmnlActivity::deviceId() const { return trmnl::effectiveDeviceId(config_, mac_); }
+std::string TrmnlActivity::idFor(const trmnl::Config& config) const { return trmnl::effectiveDeviceId(config, mac_); }
 
 // --- Navigation ----------------------------------------------------------
 
@@ -153,27 +161,22 @@ void TrmnlActivity::applyOrientation() {
   renderer.setOrientation(view_ == View::Screen ? panelOrientation(config_.orientation) : GfxRenderer::Portrait);
 }
 
-void TrmnlActivity::openHome() {
-  view_ = View::Home;
-  applyOrientation();
-  interactionsReady_ = false;
-  requestUpdate();
-}
-
-void TrmnlActivity::openScreen() {
-  view_ = View::Screen;
-  shown_ = 0;
-  applyOrientation();
-  interactionsReady_ = false;
+void TrmnlActivity::setView(const View view) {
+  {
+    RenderLock lock(*this);
+    if (view == View::Screen && view_ != View::Screen) shown_ = 0;
+    view_ = view;
+    interactionsReady_ = false;
+  }
   requestUpdate();
 }
 
 void TrmnlActivity::showNotice(const std::string& text) {
-  notice_ = text;
-  view_ = View::Notice;
-  applyOrientation();
-  interactionsReady_ = false;
-  requestUpdate();
+  {
+    RenderLock lock(*this);
+    notice_ = text;
+  }
+  setView(View::Notice);
 }
 
 // --- Fetching ------------------------------------------------------------
@@ -185,18 +188,24 @@ void TrmnlActivity::queueFetch(const bool fromTap) {
   // With no picture to keep showing, say what is happening. With one, the
   // picture stays until the next replaces it, the way a TRMNL does it.
   if (!trmnl::store::exists(trmnl::store::kImagePath) || view_ != View::Screen) {
-    busy_ = "Asking " + trmnl::serverLabel(config_.server) + " for your screen.";
-    view_ = View::Busy;
-    applyOrientation();
-    interactionsReady_ = false;
-    requestUpdate();
+    {
+      RenderLock lock(*this);
+      busy_ = "Asking " + trmnl::serverLabel(config_.server) + " for your screen. Back stops it.";
+    }
+    setView(View::Busy);
   }
 }
 
 void TrmnlActivity::runFetch() {
   fetchQueued_ = false;
+  cancelFetch_ = false;
   std::string why;
   if (!joinWifi(why)) {
+    if (cancelFetch_) {
+      releaseWifi();
+      openHome();
+      return;
+    }
 #ifndef SIMULATOR
     if (fetchFromTap_) {
       // Somebody pressed a button, so somebody can pick a network.
@@ -212,20 +221,52 @@ void TrmnlActivity::runFetch() {
       return;
     }
 #endif
-    state_.message = why;
-    schedule(false);
+    {
+      RenderLock lock(*this);
+      state_.message = why;
+      schedule(false);
+    }
     if (view_ == View::Busy) showNotice(why);
     return;
   }
 
+  trmnl::Config config = config_;
+  trmnl::State state = state_;
   bool changed = false;
-  const bool ok = exchange(changed, why);
+  std::string staged;
+  bool ok = exchange(config, state, changed, staged, why);
   if (config_.wifiOff) releaseWifi();
+  if (cancelFetch_) {
+    // Stopped by hand: keep what the exchange learned (a new key is still the
+    // reader's key), drop the half-fetched picture, and wait for a tap.
+    {
+      RenderLock lock(*this);
+      config_ = config;
+      state_ = state;
+      state_.message.clear();
+      nextFetchAt_ = 0;
+    }
+    saveState();
+    openHome();
+    return;
+  }
+  {
+    RenderLock lock(*this);
+    if (ok && changed && !Storage.replaceFile(staged.c_str(), trmnl::store::kImagePath)) {
+      ok = false;
+      why = "The card would not take the picture.";
+    }
+    config_ = config;
+    state_ = state;
+    if (!ok) state_.filename.clear();
+    state_.message = ok ? std::string() : why;
+    schedule(ok);
+    if (ok && changed) lastImageAt_ = millis();
+  }
+  saveState();
+
   if (!ok) {
     LOG_ERR("TRMNL", "fetch failed: %s", why.c_str());
-    state_.message = why;
-    saveState();
-    schedule(false);
     if (view_ == View::Busy) {
       if (trmnl::store::exists(trmnl::store::kImagePath) && !fetchFromTap_) {
         openScreen();
@@ -237,10 +278,6 @@ void TrmnlActivity::runFetch() {
     }
     return;
   }
-  state_.message.clear();
-  saveState();
-  schedule(true);
-  if (changed) lastImageAt_ = millis();
   if (view_ == View::Busy) {
     openScreen();
   } else if (view_ == View::Screen && changed) {
@@ -248,6 +285,11 @@ void TrmnlActivity::runFetch() {
   } else if (view_ == View::Home) {
     requestUpdate();
   }
+}
+
+void TrmnlActivity::pumpDuringFetch() {
+  mappedInput.update();
+  if (mappedInput.wasReleased(MappedInputManager::Button::Back) || mappedInput.wasHomeGesture()) cancelFetch_ = true;
 }
 
 void TrmnlActivity::schedule(const bool succeeded) {
@@ -258,40 +300,42 @@ void TrmnlActivity::schedule(const bool succeeded) {
   if (nextFetchAt_ == 0) nextFetchAt_ = 1;
 }
 
-bool TrmnlActivity::fetchJson(const std::string& url, const char* path, std::string& body, std::string& why) {
-  (void)path;
+bool TrmnlActivity::fetchJson(const trmnl::Config& config, const trmnl::State& state, const std::string& url,
+                              std::string& body, std::string& why) {
   std::vector<HttpDownloader::Header> headers;
   headers.reserve(10);
-  headers.emplace_back("ID", deviceId());
-  if (!config_.apiKey.empty()) headers.emplace_back("Access-Token", config_.apiKey);
-  headers.emplace_back("Refresh-Rate", std::to_string(trmnl::intervalSeconds(config_, state_.refreshRate)));
+  headers.emplace_back("ID", idFor(config));
+  if (!config.apiKey.empty()) headers.emplace_back("Access-Token", config.apiKey);
+  headers.emplace_back("Refresh-Rate", std::to_string(trmnl::intervalSeconds(config, state.refreshRate)));
   const std::string volts = batteryVolts();
   if (!volts.empty()) headers.emplace_back("Battery-Voltage", volts);
   headers.emplace_back("FW-Version", CROSSPOINT_VERSION);
 #ifndef SIMULATOR
   headers.emplace_back("RSSI", std::to_string(WiFi.RSSI()));
 #endif
-  headers.emplace_back("Width", std::to_string(trmnl::requestWidth(config_.orientation)));
-  headers.emplace_back("Height", std::to_string(trmnl::requestHeight(config_.orientation)));
+  headers.emplace_back("Width", std::to_string(trmnl::requestWidth(config.orientation)));
+  headers.emplace_back("Height", std::to_string(trmnl::requestHeight(config.orientation)));
   headers.emplace_back("Accept", "application/json");
 
-  const auto result =
-      HttpDownloader::downloadToFile(url, trmnl::store::kReplyPath, nullptr, nullptr, "", "", headers, false);
+  const auto result = HttpDownloader::downloadToFile(
+      url, trmnl::store::kReplyPath, [this](size_t, size_t) { pumpDuringFetch(); }, &cancelFetch_, "", "", headers,
+      false);
   if (result != HttpDownloader::OK) {
     const int status = HttpDownloader::lastStatus();
     char text[160];
     if (status == 0) {
-      std::snprintf(text, sizeof(text), "%s did not answer. Check the address, and that the reader's Wi-Fi can reach it.",
-                    trmnl::serverLabel(config_.server).c_str());
+      std::snprintf(text, sizeof(text),
+                    "%s did not answer. Check the address, and that the reader's Wi-Fi can reach it.",
+                    trmnl::serverLabel(config.server).c_str());
     } else if (status == 401 || status == 403) {
       std::snprintf(text, sizeof(text), "%s refused this reader's key (%d). Check the API key on the phone page.",
-                    trmnl::serverLabel(config_.server).c_str(), status);
+                    trmnl::serverLabel(config.server).c_str(), status);
     } else if (status == 404) {
       std::snprintf(text, sizeof(text),
                     "%s does not know this reader (404). Add device %s on the server, or check the address.",
-                    trmnl::serverLabel(config_.server).c_str(), deviceId().c_str());
+                    trmnl::serverLabel(config.server).c_str(), idFor(config).c_str());
     } else {
-      std::snprintf(text, sizeof(text), "%s answered with an error (%d).", trmnl::serverLabel(config_.server).c_str(),
+      std::snprintf(text, sizeof(text), "%s answered with an error (%d).", trmnl::serverLabel(config.server).c_str(),
                     status);
     }
     why = text;
@@ -305,35 +349,55 @@ bool TrmnlActivity::fetchJson(const std::string& url, const char* path, std::str
   return true;
 }
 
-bool TrmnlActivity::exchange(bool& changed, std::string& why) {
+bool TrmnlActivity::exchange(trmnl::Config& config, trmnl::State& state, bool& changed, std::string& staged,
+                             std::string& why) {
   changed = false;
   std::string body;
+  const std::string id = idFor(config);
+  if (!trmnl::usableDeviceId(id)) {
+    why = "This reader's Wi-Fi address could not be read. Set a device ID on the phone page.";
+    return false;
+  }
+  if (!config.apiKey.empty() && !trmnl::keyBelongsTo(config, state, id)) {
+    // Issued for another ID, or saved before the reader kept track: sending it
+    // would show that device's screen, so it is asked for again.
+    LOG_INF("TRMNL", "dropping a key issued for '%s', not %s", state.keyFor.c_str(), id.c_str());
+    config.apiKey.clear();
+    state.keyFor.clear();
+    state.friendlyId.clear();
+    state.filename.clear();
+    if (!trmnl::store::write(trmnl::store::kConfigPath, trmnl::formatConfig(config))) {
+      LOG_ERR("TRMNL", "config.txt was not written");
+    }
+  }
 
   // No key yet: ask for one, the way a new TRMNL does on its first boot.
-  if (config_.apiKey.empty()) {
-    if (!fetchJson(trmnl::apiUrl(config_.server, "/api/setup"), "setup", body, why)) return false;
+  if (config.apiKey.empty()) {
+    if (!fetchJson(config, state, trmnl::apiUrl(config.server, "/api/setup"), body, why)) return false;
     const trmnl::SetupReply setup = trmnl::parseSetup(body);
     if (!setup.ok) {
       why = setup.message.empty() ? "The server would not set this reader up." : "The server said: " + setup.message;
-      why += " Device ID " + deviceId() + ".";
+      why += " Device ID " + id + ".";
       return false;
     }
-    config_.apiKey = setup.apiKey;
-    state_.friendlyId = setup.friendlyId;
-    if (!trmnl::store::write(trmnl::store::kConfigPath, trmnl::formatConfig(config_))) {
+    config.apiKey = setup.apiKey;
+    state.keyFor = id;
+    state.friendlyId = setup.friendlyId;
+    if (!trmnl::store::write(trmnl::store::kConfigPath, trmnl::formatConfig(config))) {
       LOG_ERR("TRMNL", "the new API key was not saved");
     }
     configured_ = true;
     LOG_INF("TRMNL", "set up as %s", setup.friendlyId.c_str());
   }
 
-  if (!fetchJson(trmnl::apiUrl(config_.server, "/api/display"), "display", body, why)) return false;
+  if (!fetchJson(config, state, trmnl::apiUrl(config.server, "/api/display"), body, why)) return false;
   const trmnl::DisplayReply reply = trmnl::parseDisplay(body);
-  if (reply.refreshRate > 0) state_.refreshRate = reply.refreshRate;
+  if (reply.refreshRate > 0) state.refreshRate = reply.refreshRate;
   if (reply.resetCredentials) {
     // The server has forgotten this reader; the next attempt sets it up again.
-    config_.apiKey.clear();
-    trmnl::store::write(trmnl::store::kConfigPath, trmnl::formatConfig(config_));
+    config.apiKey.clear();
+    state.keyFor.clear();
+    trmnl::store::write(trmnl::store::kConfigPath, trmnl::formatConfig(config));
   }
   if (!reply.ok) {
     why = reply.message.empty() ? "The server sent no picture." : "The server said: " + reply.message;
@@ -342,27 +406,28 @@ bool TrmnlActivity::exchange(bool& changed, std::string& why) {
 
   // The same picture as last time is not fetched again: TRMNL's own firmware
   // compares the filename for the same reason.
-  if (!reply.filename.empty() && reply.filename == state_.filename && trmnl::store::exists(trmnl::store::kImagePath)) {
+  if (!reply.filename.empty() && reply.filename == state.filename && trmnl::store::exists(trmnl::store::kImagePath)) {
     return true;
   }
 
-  const std::string imageUrl = trmnl::resolveUrl(config_.server, reply.imageUrl);
+  const std::string imageUrl = trmnl::resolveUrl(config.server, reply.imageUrl);
   std::vector<HttpDownloader::Header> headers;
-  if (!config_.apiKey.empty()) headers.emplace_back("Access-Token", config_.apiKey);
-  if (HttpDownloader::downloadToFile(imageUrl, trmnl::store::kDownloadPath, nullptr, nullptr, "", "", headers, false) !=
-      HttpDownloader::OK) {
+  if (!config.apiKey.empty()) headers.emplace_back("Access-Token", config.apiKey);
+  if (HttpDownloader::downloadToFile(
+          imageUrl, trmnl::store::kDownloadPath, [this](size_t, size_t) { pumpDuringFetch(); }, &cancelFetch_, "", "",
+          headers, false) != HttpDownloader::OK) {
     char text[96];
     std::snprintf(text, sizeof(text), "The picture did not download (%d).", HttpDownloader::lastStatus());
     why = text;
     return false;
   }
-  if (!storePicture(why)) return false;
-  state_.filename = reply.filename.empty() ? reply.imageUrl : reply.filename;
+  if (!storePicture(config, staged, why)) return false;
+  state.filename = reply.filename.empty() ? reply.imageUrl : reply.filename;
   changed = true;
   return true;
 }
 
-bool TrmnlActivity::storePicture(std::string& why) {
+bool TrmnlActivity::storePicture(const trmnl::Config& config, std::string& staged, std::string& why) {
   uint8_t head[8] = {};
   {
     HalFile file;
@@ -387,10 +452,7 @@ bool TrmnlActivity::storePicture(std::string& why) {
           return false;
         }
       }
-      if (!Storage.replaceFile(trmnl::store::kDownloadPath, trmnl::store::kImagePath)) {
-        why = "The card would not take the picture.";
-        return false;
-      }
+      staged = trmnl::store::kDownloadPath;
       return true;
     }
     case trmnl::ImageKind::Png: {
@@ -402,8 +464,8 @@ bool TrmnlActivity::storePicture(std::string& why) {
           why = "The card would not take the picture.";
           return false;
         }
-        if (!PngToBmpConverter::pngFileTo1BitBmpStreamFitWithin(png, bmp, trmnl::requestWidth(config_.orientation),
-                                                                 trmnl::requestHeight(config_.orientation))) {
+        if (!PngToBmpConverter::pngFileTo1BitBmpStreamFitWithin(png, bmp, trmnl::requestWidth(config.orientation),
+                                                                trmnl::requestHeight(config.orientation))) {
           bmp.close();
           Storage.remove(trmnl::store::kConvertPath);
           why = "The server's PNG could not be decoded.";
@@ -412,10 +474,7 @@ bool TrmnlActivity::storePicture(std::string& why) {
         bmp.close();
       }
       Storage.remove(trmnl::store::kDownloadPath);
-      if (!Storage.replaceFile(trmnl::store::kConvertPath, trmnl::store::kImagePath)) {
-        why = "The card would not take the picture.";
-        return false;
-      }
+      staged = trmnl::store::kConvertPath;
       return true;
     }
     case trmnl::ImageKind::Unknown:
@@ -462,6 +521,11 @@ bool TrmnlActivity::joinWifi(std::string& why) {
   const unsigned long deadline = millis() + kJoinTimeoutMs;
   while (millis() < deadline) {
     if (WiFi.status() == WL_CONNECTED) return true;
+    pumpDuringFetch();
+    if (cancelFetch_) {
+      why = "Stopped.";
+      return false;
+    }
     delay(100);
   }
   why = "Could not join " + ssid + ". The reader will try again.";
@@ -492,6 +556,7 @@ std::string TrmnlActivity::facts() const {
 }
 
 void TrmnlActivity::startPhone() {
+  cancelFetch_ = false;
 #ifndef SIMULATOR
   if (WiFi.status() != WL_CONNECTED) {
     std::string why;
@@ -543,20 +608,20 @@ void TrmnlActivity::startPhone() {
   const bool mdnsUp = MDNS.begin(devicehost::mdnsName());
   const std::string dotted = std::string(WiFi.localIP().toString().c_str());
 #endif
-  // The code carries the address, which depends on no service; the name, which
-  // does, is only what a person reads.
-  phoneUrl_ = "http://" + dotted + "/trmnl";
+  {
+    RenderLock lock(*this);
+    // The code carries the address, which depends on no service; the name,
+    // which does, is only what a person reads.
+    phoneUrl_ = "http://" + dotted + "/trmnl";
 #ifdef SIMULATOR
-  phoneReadable_ = phoneUrl_;
-  (void)mdnsUp;
+    phoneReadable_ = phoneUrl_;
+    (void)mdnsUp;
 #else
-  phoneReadable_ = mdnsUp ? std::string("http://") + devicehost::mdnsName() + ".local/trmnl" : phoneUrl_;
+    phoneReadable_ = mdnsUp ? std::string("http://") + devicehost::mdnsName() + ".local/trmnl" : phoneUrl_;
 #endif
-  phoneSaved_ = false;
-  view_ = View::Phone;
-  applyOrientation();
-  interactionsReady_ = false;
-  requestUpdate();
+    phoneSaved_ = false;
+  }
+  setView(View::Phone);
 }
 
 void TrmnlActivity::stopPhone() {
@@ -605,7 +670,10 @@ void TrmnlActivity::loop() {
   if ((mappedInput.wasReleased(MappedInputManager::Button::Up) ||
        mappedInput.wasReleased(MappedInputManager::Button::Down)) &&
       (view_ == View::Screen || view_ == View::Home)) {
-    state_.filename.clear();
+    {
+      RenderLock lock(*this);
+      state_.filename.clear();
+    }
     queueFetch(true);
     return;
   }
@@ -614,23 +682,21 @@ void TrmnlActivity::loop() {
     // Pumped from loop(): there are no background threads in this firmware.
     for (int i = 0; i < 8 && server_->isRunning(); ++i) server_->handleClient();
     if (server_->takeChanged()) {
-      const trmnl::Config before = config_;
-      loadConfig();
-      // Another server or another name is another device: what the old one
-      // called this reader, and its last picture's name, mean nothing now.
-      if (before.server != config_.server || before.deviceId != config_.deviceId) {
-        state_.friendlyId.clear();
-        state_.filename.clear();
-        state_.refreshRate = 0;
+      {
+        RenderLock lock(*this);
+        const trmnl::Config before = config_;
+        loadConfig();
+        if (trmnl::applyPhoneSave(before, config_, state_, mac_) &&
+            !trmnl::store::write(trmnl::store::kConfigPath, trmnl::formatConfig(config_))) {
+          LOG_ERR("TRMNL", "config.txt was not written");
+        }
+        saveState();
+        failures_ = 0;
+        nextFetchAt_ = 0;
+        phoneSaved_ = true;
+        interactionsReady_ = false;
       }
-      if (before.orientation != config_.orientation) state_.filename.clear();
-      state_.message.clear();
-      saveState();
-      failures_ = 0;
-      nextFetchAt_ = 0;
-      phoneSaved_ = true;
       server_->setFacts(facts());
-      interactionsReady_ = false;
       requestUpdate();
     }
   }
@@ -649,12 +715,16 @@ void TrmnlActivity::loop() {
     openHome();
     return;
   }
-  if (!interactionsReady_) return;
-  fui::InputSnapshot input{};
-  input.touchReleased = true;
-  input.touchX = static_cast<int16_t>(x);
-  input.touchY = static_cast<int16_t>(y);
-  const fui::ActionEvent action = interactions_.route(input);
+  fui::ActionEvent action{};
+  {
+    RenderLock lock(*this);
+    if (!interactionsReady_) return;
+    fui::InputSnapshot input{};
+    input.touchReleased = true;
+    input.touchX = static_cast<int16_t>(x);
+    input.touchY = static_cast<int16_t>(y);
+    action = interactions_.route(input);
+  }
 
   switch (action.action) {
     case trmnlui::ActionShow:
@@ -665,8 +735,10 @@ void TrmnlActivity::loop() {
         queueFetch(true);
       }
       return;
-    case trmnlui::ActionRefresh:
+    case trmnlui::ActionRefresh: {
+      RenderLock lock(*this);
       state_.filename.clear();
+    }
       queueFetch(true);
       return;
     case trmnlui::ActionUsePhone:
@@ -674,7 +746,10 @@ void TrmnlActivity::loop() {
       return;
     case trmnlui::ActionDismiss:
       stopPhone();
-      if (!configured_) loadConfig();
+      if (!configured_) {
+        RenderLock lock(*this);
+        loadConfig();
+      }
       openHome();
       return;
     default:
@@ -699,7 +774,8 @@ std::string TrmnlActivity::statusLine() const {
   }
   if (lastImageAt_ != 0) {
     const unsigned long ago = (millis() - lastImageAt_) / 1000;
-    line = ago < 60 ? "Updated just now." : "Updated " + trmnl::inPhrase(static_cast<uint32_t>(ago)).substr(3) + " ago.";
+    line =
+        ago < 60 ? "Updated just now." : "Updated " + trmnl::inPhrase(static_cast<uint32_t>(ago)).substr(3) + " ago.";
   } else if (trmnl::store::exists(trmnl::store::kImagePath)) {
     line = "Showing the last screen saved on the card.";
   } else {
@@ -731,7 +807,7 @@ void TrmnlActivity::drawPicture() {
   }
   shown_++;
   renderer.displayBuffer(trmnl::cleanRefresh(shown_, config_.cleanEvery) ? HalDisplay::HALF_REFRESH
-                                                                          : HalDisplay::FAST_REFRESH);
+                                                                         : HalDisplay::FAST_REFRESH);
 }
 
 void TrmnlActivity::drawPreview(const fui::Rect& box) {
@@ -747,6 +823,9 @@ void TrmnlActivity::drawPreview(const fui::Rect& box) {
 }
 
 void TrmnlActivity::render(RenderLock&&) {
+  // Here and nowhere else: turning the panel from loop() could land halfway
+  // through a draw in the other orientation.
+  applyOrientation();
   if (view_ == View::Screen) {
     interactionsReady_ = false;
     drawPicture();
