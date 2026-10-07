@@ -67,6 +67,8 @@ class GCalActivity final : public Activity {
   void takePaste(const std::string& pasted);
   bool sync(std::string& message, bool& changed);
   bool ensureToken(std::string& message);
+  // Gives a clock that was never given a zone the account's; true when it did.
+  bool adoptAccountZone();
   void backgroundPoll();
   // Rebuilds the schedule from events_ for the reader's current day, keeping
   // the page on `keepDay` (or today when it is -1).

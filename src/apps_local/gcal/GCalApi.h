@@ -34,6 +34,9 @@ class Api {
   bool events(const gtasks::AccessToken& token, const std::string& calendarId, int64_t timeMin, int64_t timeMax,
               std::vector<Event>& out, std::string& message);
 
+  // The account's time zone as Google names it ("Europe/Berlin").
+  bool timeZone(const gtasks::AccessToken& token, std::string& out, std::string& message);
+
   // True when the last call failed because the access token was refused, so
   // the caller can refresh once and retry.
   bool tokenRefused = false;
