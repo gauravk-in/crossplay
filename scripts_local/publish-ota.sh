@@ -31,6 +31,9 @@ pio run -e x4pro_ota
 BIN="$ROOT/.pio/build/x4pro_ota/firmware.bin"
 grep -qa "$VERSION" "$BIN" || { echo "version $VERSION is not in $BIN" >&2; exit 1; }
 grep -qa "$CROSSPLAY_OTA_URL" "$BIN" || { echo "feed URL is not in $BIN" >&2; exit 1; }
+if [[ -n "${GTASKS_CLIENT_ID:-}" ]]; then
+  grep -qa "$GTASKS_CLIENT_ID" "$BIN" || { echo "Google client id is not in $BIN" >&2; exit 1; }
+fi
 echo "built v${VERSION} from $(git rev-parse --short HEAD)"
 [[ $DRY_RUN == 1 ]] && exit 0
 
@@ -41,7 +44,7 @@ git branch -r --contains HEAD | grep -q . || { echo "HEAD is not pushed to origi
 AUTH=(-H "Authorization: Bearer ${GITHUB_RELEASE_TOKEN}" -H "Accept: application/vnd.github+json")
 BODY="$(printf '{"tag_name":"v%s","target_commitish":"%s","name":"v%s","body":"Built from %s.","make_latest":"true"}' \
   "$VERSION" "$(git rev-parse HEAD)" "$VERSION" "$(git rev-parse --short HEAD)")"
-RELEASE="$(curl -fsS "${AUTH[@]}" -X POST "https://api.github.com/repos/${REPO}/releases" -d "$BODY")"
+RELEASE="$(curl -fsS "${AUTH[@]}" -H "Content-Type: application/json" -X POST "https://api.github.com/repos/${REPO}/releases" -d "$BODY")"
 ID="$(printf '%s' "$RELEASE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
 # The x4pro updater asks for the literal asset name firmware.bin
 # (CROSSPOINT_RELEASE_ASSET in FirmwareBoardTag.h).
