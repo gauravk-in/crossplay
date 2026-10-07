@@ -8,3 +8,4 @@ wallet_mark  = wallet-cards  # the app on the shelf: a stack of cards, not a cod
 wallet_qr    = qr-code       # the badge beside each card in the list
 wallet_edit  = square-pen    # the band's way to the phone page, as in Workouts
 wallet_trash = trash-2       # the band's delete on an open card
+wallet_sleep = moon          # put the open card on the sleep screen

@@ -177,16 +177,35 @@ fui::Rect codeSquare(const fui::Rect& room, const int16_t below) {
   return fui::makeRect(static_cast<int16_t>(room.x + (room.width - side) / 2), room.y, side, side);
 }
 
-void prevNext(toybox::Screen& screen, const fui::Rect& footer, const CardModel& model) {
-  const int16_t half = static_cast<int16_t>((footer.width - toybox::kGutter) / 2);
-  if (model.hasPrev) {
-    footerButton(screen, fui::makeRect(footer.x, footer.y, half, footer.height), "PREV", ActionPrev, true);
-  }
-  if (model.hasNext) {
-    footerButton(screen,
-                 fui::makeRect(static_cast<int16_t>(footer.x + half + toybox::kGutter), footer.y, half, footer.height),
-                 "NEXT", ActionNext, true);
-  }
+// The open card's footer: PREV, a square moon, NEXT. The delete confirm uses
+// the same split so that what a stray second tap lands on is always KEEP IT.
+struct CardFooter {
+  fui::Rect prev;
+  fui::Rect moon;
+  fui::Rect next;
+};
+
+CardFooter cardFooter(const fui::Rect& footer) {
+  const int16_t side = footer.height;
+  const int16_t half = static_cast<int16_t>((footer.width - side - toybox::kGutter * 2) / 2);
+  const int16_t moonX = static_cast<int16_t>(footer.x + half + toybox::kGutter);
+  const int16_t nextX = static_cast<int16_t>(moonX + side + toybox::kGutter);
+  return CardFooter{
+      fui::makeRect(footer.x, footer.y, half, footer.height), fui::makeRect(moonX, footer.y, side, side),
+      fui::makeRect(nextX, footer.y, static_cast<int16_t>(footer.x + footer.width - nextX), footer.height)};
+}
+
+// The moon puts this card on the sleep screen: outlined while it is not
+// there, filled while it is.
+void footerControls(toybox::Screen& screen, const fui::Rect& footer, const CardModel& model) {
+  const CardFooter parts = cardFooter(footer);
+  if (model.hasPrev) footerButton(screen, parts.prev, "PREV", ActionPrev, true);
+  fui::ButtonProps moon;
+  moon.icon = fui::bitmapFromIcon(icon_wallet_sleep_32);
+  moon.action = ActionSleep;
+  if (!model.shownAsleep) moon.styles = toybox::rowStyles();
+  screen.button(moon, parts.moon);
+  if (model.hasNext) footerButton(screen, parts.next, "NEXT", ActionNext, true);
 }
 
 }  // namespace
@@ -222,10 +241,23 @@ fui::Rect buildCard(toybox::Screen& screen, const CardModel& model) {
 
   // The title is the band, as a pass's name is its header; the code fills the
   // width under it and the caption sits beneath.
-  chrome(screen, model.title, model.position, &icon_wallet_trash_32, ActionDelete);
-  const fui::Rect room = bodyAboveFooter(device);
+  if (model.asleep) {
+    chrome(screen, model.title);
+  } else {
+    chrome(screen, model.title, model.position, &icon_wallet_trash_32, ActionDelete);
+  }
+  fui::Rect room = bodyAboveFooter(device);
   const int16_t below = captioned ? static_cast<int16_t>(toybox::kGutter * 2 + bodyLine * 2) : 0;
-  const fui::Rect square = codeSquare(room, below);
+  fui::Rect square = codeSquare(room, below);
+  if (model.asleep) {
+    // No footer asleep, so the code and its caption sit in the middle of the
+    // whole page instead of hanging from the band.
+    const int16_t height = static_cast<int16_t>(device.height - toybox::kMargin - room.y);
+    square = codeSquare(fui::makeRect(room.x, room.y, room.width, height), below);
+    room.y = static_cast<int16_t>(room.y + (height - square.height - below) / 2);
+    room.height = static_cast<int16_t>(square.height + below);
+    square.y = room.y;
+  }
   if (captioned) {
     fui::TextStyle style = plain(toybox::kBodyFont, fui::TextAlign::Center, 2);
     // Centred in what is left under the code, so it reads with the code
@@ -235,7 +267,7 @@ fui::Rect buildCard(toybox::Screen& screen, const CardModel& model) {
     const std::string drawn = toybox::fitLines(screen.target(), model.caption, box.width, 2, style);
     screen.target().text(box, drawn.c_str(), style);
   }
-  prevNext(screen, footer, model);
+  if (!model.asleep) footerControls(screen, footer, model);
   return square;
 }
 
@@ -253,11 +285,10 @@ void buildDeleteConfirm(toybox::Screen& screen, const char* title, const char* p
   const fui::DeviceContext& device = screen.device();
   const fui::Rect footer = footerBand(device);
   centredProse(screen, bodyAboveFooter(device), prose, 5);
-  const int16_t half = static_cast<int16_t>((footer.width - toybox::kGutter) / 2);
-  footerButton(screen, fui::makeRect(footer.x, footer.y, half, footer.height), "DELETE IT", ActionDeleteConfirm, true);
-  footerButton(screen,
-               fui::makeRect(static_cast<int16_t>(footer.x + half + toybox::kGutter), footer.y, half, footer.height),
-               "KEEP IT", ActionDeleteKeep, false);
+  const CardFooter parts = cardFooter(footer);
+  footerButton(screen, parts.prev, "DELETE IT", ActionDeleteConfirm, true);
+  const int16_t keepW = static_cast<int16_t>(parts.next.x + parts.next.width - parts.moon.x);
+  footerButton(screen, fui::makeRect(parts.moon.x, footer.y, keepW, footer.height), "KEEP IT", ActionDeleteKeep, false);
 }
 
 // --- The phone -----------------------------------------------------------

@@ -15310,6 +15310,11 @@ void prevAndNextAreOnlyThereWhenThereIsACardThatWay() {
   }
 }
 
+bool covers(const fui::Rect& outer, const fui::Rect& inner) {
+  return inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.width <= outer.x + outer.width &&
+         inner.y + inner.height <= outer.y + outer.height;
+}
+
 void keepItSitsWhereNextWas() {
   Rendered card;
   const walletui::CardModel model = cardAt(true, true, "");
@@ -15319,13 +15324,51 @@ void keepItSitsWhereNextWas() {
     walletui::buildDeleteConfirm(screen, "Boarding pass", "Delete this card from the reader?");
   });
   const fui::Rect* next = hitFor(card, walletui::ActionNext);
+  const fui::Rect* moon = hitFor(card, walletui::ActionSleep);
   const fui::Rect* keep = hitFor(confirm, walletui::ActionDeleteKeep);
   const fui::Rect* bin = hitFor(card, walletui::ActionDelete);
   const fui::Rect* yes = hitFor(confirm, walletui::ActionDeleteConfirm);
-  CHECK(next != nullptr && keep != nullptr && bin != nullptr && yes != nullptr);
-  if (next && keep) CHECK(next->x == keep->x && next->y == keep->y && next->width == keep->width);
+  CHECK(next != nullptr && moon != nullptr && keep != nullptr && bin != nullptr && yes != nullptr);
+  if (next && moon && keep) CHECK(covers(*keep, *next) && covers(*keep, *moon));
+  if (moon && yes) CHECK(!overlaps(*moon, *yes));
   // A second jab at the bin during the repaint lands on nothing that deletes.
   if (bin && yes) CHECK(!overlaps(*bin, *yes));
+}
+
+void theMoonIsAlwaysThereAndNeverTouchesItsNeighbours() {
+  const bool ends[][2] = {{false, false}, {true, true}, {false, true}};
+  for (const auto& e : ends) {
+    Rendered out;
+    walletui::CardModel model = cardAt(e[0], e[1], "");
+    build(out, [&](toybox::Screen& screen) { walletui::buildCard(screen, model); });
+    CHECK(countAction(out, walletui::ActionSleep) == 1);
+    const fui::Rect* moon = hitFor(out, walletui::ActionSleep);
+    const fui::Rect* prev = hitFor(out, walletui::ActionPrev);
+    const fui::Rect* next = hitFor(out, walletui::ActionNext);
+    if (moon && prev) CHECK(!overlaps(*moon, *prev));
+    if (moon && next) CHECK(!overlaps(*moon, *next));
+  }
+}
+
+void asleepTheCardHasNoButtonsAndTheCodeIsCentred() {
+  Rendered out;
+  walletui::CardModel model = cardAt(true, true, "LH 1234 Munich to Lisbon, seat 14C");
+  model.asleep = true;
+  model.shownAsleep = true;
+  fui::Rect square{};
+  build(out, [&](toybox::Screen& screen) { square = walletui::buildCard(screen, model); });
+  CHECK(out.interactions.count() == 0);
+  CHECK(!drew(out, "2/3"));
+  CHECK(drew(out, "Boarding pass"));
+  CHECK(square.width >= 400 && square.width == square.height);
+  // Centred in the page under the band: more room below the code than the
+  // awake card leaves, where the footer was.
+  Rendered awake;
+  fui::Rect awakeSquare{};
+  const walletui::CardModel open = cardAt(true, true, "LH 1234 Munich to Lisbon, seat 14C");
+  build(awake, [&](toybox::Screen& screen) { awakeSquare = walletui::buildCard(screen, open); });
+  CHECK(square.y > awakeSquare.y);
+  CHECK(square.y + square.height < device().height);
 }
 
 void thePhoneScreenLeavesOneWayOut() {
@@ -15596,6 +15639,8 @@ int main() {
   wallettest::theCodeHasItsSquareToItself();
   wallettest::prevAndNextAreOnlyThereWhenThereIsACardThatWay();
   wallettest::keepItSitsWhereNextWas();
+  wallettest::theMoonIsAlwaysThereAndNeverTouchesItsNeighbours();
+  wallettest::asleepTheCardHasNoButtonsAndTheCodeIsCentred();
   wallettest::thePhoneScreenLeavesOneWayOut();
   gtaskstest::aTapOnARowNamesTheTaskNotTheSlot();
   gtaskstest::theArrowsAppearOnlyWhenThereIsSomewhereToGo();

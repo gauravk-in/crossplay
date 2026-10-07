@@ -166,6 +166,30 @@ void testQrVersion() {
   CHECK(qrVersionFor(2954, false) == 0);
 }
 
+// The sleep screen's choice: a round trip, what an old or damaged file reads
+// as, and that it can only ever name a card.
+void testAsleep() {
+  AsleepChoice choice;
+  choice.file = "0007.txt";
+  choice.previousMode = 3;
+  choice.previousQuickResume = 1;
+  AsleepChoice back;
+  CHECK(parseAsleep(formatAsleep(choice), back));
+  CHECK(back.file == "0007.txt" && back.previousMode == 3 && back.previousQuickResume == 1);
+
+  CHECK(parseAsleep("0002.txt\r\n", back));
+  CHECK(back.file == "0002.txt" && back.previousMode == -1 && back.previousQuickResume == -1);
+  CHECK(parseAsleep("0002.txt\n-1\n-1\n", back));
+  CHECK(back.previousMode == -1 && back.previousQuickResume == -1);
+  CHECK(parseAsleep("0002.txt\n999\n7\n", back));
+  CHECK(back.previousMode == -1 && back.previousQuickResume == -1);
+
+  CHECK(!parseAsleep("", back));
+  CHECK(!parseAsleep("\n3\n0\n", back));
+  CHECK(!parseAsleep("../sleep.bmp\n3\n0\n", back));
+  CHECK(!parseAsleep("notes.txt\n", back));
+}
+
 }  // namespace
 
 int main() {
@@ -176,6 +200,7 @@ int main() {
   testUpload();
   testListing();
   testQrVersion();
+  testAsleep();
   std::printf("%d checks, %d failed\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }

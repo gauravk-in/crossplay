@@ -27,6 +27,7 @@
 #include "apps_local/gcal/GCalSleep.h"
 #include "apps_local/gtasks/GTasksSleep.h"
 #include "apps_local/notes/NotesSleep.h"
+#include "apps_local/wallet/WalletSleep.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "images/Logo120.h"
@@ -601,6 +602,14 @@ void SleepActivity::onEnter() {
     case (CrossPointSettings::SLEEP_SCREEN_MODE::CALENDAR):
       // CrossPlay: today's schedule from Calendar, from the card as last synced.
       if (gcal::drawAsleep(renderer)) {
+        renderer.displayBuffer(HalDisplay::HALF_REFRESH);
+        return;
+      }
+      return renderDefaultSleepScreen();
+    case (CrossPointSettings::SLEEP_SCREEN_MODE::CARD):
+      // CrossPlay: the card chosen in Cards, drawn from its file now. A card
+      // since deleted is the default screen rather than an empty page.
+      if (wallet::drawAsleep(renderer)) {
         renderer.displayBuffer(HalDisplay::HALF_REFRESH);
         return;
       }

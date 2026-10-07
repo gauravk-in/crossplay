@@ -195,7 +195,7 @@ std::string deleteConsequence(bool builtIn, bool isActive);
 //      reader (inside a book the cover wins);
 //   5. DARK, LIGHT, COVER and BLANK never look at it.
 //
-// The eleven modes, mirrored from CrossPointSettings::SLEEP_SCREEN_MODE. That
+// The twelve modes, mirrored from CrossPointSettings::SLEEP_SCREEN_MODE. That
 // header pulls in ArduinoJson and the whole persistence layer, so it cannot be
 // included on a host; WallpapersActivity.cpp static_asserts every value below
 // against the real enum, which is what stops the two from drifting.
@@ -211,7 +211,8 @@ enum SleepScreenMode : uint8_t {
   kSleepNote = 8,
   kSleepTasks = 9,
   kSleepCalendar = 10,
-  kSleepModeCount = 11,
+  kSleepCard = 11,
+  kSleepModeCount = 12,
 };
 
 // True when SleepActivity would draw /sleep.bmp for this combination.

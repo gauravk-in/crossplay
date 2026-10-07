@@ -31,6 +31,8 @@ class CrossPointSettings : public PersistableStore<CrossPointSettings> {
     TASKS = 9,
     // CrossPlay: today's schedule from Calendar, drawn live (apps_local/gcal/GCalSleep.h).
     CALENDAR = 10,
+    // CrossPlay: the card chosen in Cards, drawn live (apps_local/wallet/WalletSleep.h).
+    CARD = 11,
     SLEEP_SCREEN_MODE_COUNT
   };
   enum SLEEP_SCREEN_COVER_MODE { FIT = 0, CROP = 1, SLEEP_SCREEN_COVER_MODE_COUNT };
