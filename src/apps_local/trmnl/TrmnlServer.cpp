@@ -7,6 +7,11 @@
 #include <string>
 
 #include "TrmnlCore.h"
+// The generated page is declared PROGMEM, which a static analyser without the
+// Arduino headers does not know.
+#ifndef PROGMEM
+#define PROGMEM
+#endif
 #include "TrmnlPageHtml.generated.h"
 #include "TrmnlStore.h"
 
