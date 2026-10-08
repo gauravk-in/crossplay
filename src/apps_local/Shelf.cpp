@@ -43,6 +43,8 @@
 #include "underhand/UnderhandActivity.h"
 #include "wallpapers/WallpapersActivity.h"
 #include "wavelength/WavelengthActivity.h"
+#include "weather/WeatherActivity.h"
+#include "weather/WeatherUiIcons.h"
 #include "wikipedia/WikipediaActivity.h"
 #include "wordle/WordleActivity.h"
 #include "xkcd/XkcdActivity.h"
@@ -91,6 +93,7 @@ constexpr shelf::Item kApps[] = {
     // Card #516. The icon is the Lucide list mark borrowed from Murdle while
     // the screens are being chosen; a Notes mark comes with the real app.
     {"NOTES", &icon_murdle_face_clues_32, &NotesActivity::create},
+    {"WEATHER", &icon_weather_32, &WeatherActivity::create},
 };
 
 // The two rows Home grows, in reading order. Titles are Title Case because

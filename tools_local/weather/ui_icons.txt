@@ -1,0 +1,15 @@
+# The Weather app's chrome, generated into src/apps_local/weather/WeatherUiIcons.h
+# by tools_local/weather/gen_icons.sh. Format: alias = lucide-name.
+
+# The header's two buttons.
+wx_refresh  = refresh-cw
+wx_settings = settings
+# The location row and the empty state.
+wx_pin      = map-pin
+# Rain chance and wind beside the numbers they label.
+wx_drop     = droplet
+wx_wind     = wind
+wx_sunrise  = sunrise
+wx_sunset   = sunset
+# The shelf row.
+weather     = cloud-sun
