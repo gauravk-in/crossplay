@@ -19,7 +19,7 @@ trap 'rm -rf "$WORK"' EXIT
 uv run --quiet --with fonttools pyftsubset lib/EpdFont/builtinFonts/source/NotoSans/NotoSans-Bold.ttf \
   --unicodes="U+0020-007E,U+2013,U+2014,U+2018,U+2019,U+201C,U+201D,U+2026" \
   --output-file="$WORK/sans-bold.ttf"
-for size in 20 26 32 40; do
+for size in 14 17 20 26 32 40; do
   out="src/apps_local/prompter/fonts/prompter_sans_${size}.h"
   uv run --quiet --with freetype-py --with fonttools \
     python lib/EpdFont/scripts/fontconvert.py "prompter_sans_${size}" "${size}" "$WORK/sans-bold.ttf" \

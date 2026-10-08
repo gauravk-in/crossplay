@@ -21,6 +21,8 @@
 #include "../ui/ToyboxTheme.h"
 #include "PrompterScreens.h"
 #include "PrompterStore.h"
+#include "fonts/prompter_sans_14.h"
+#include "fonts/prompter_sans_17.h"
 #include "fonts/prompter_sans_20.h"
 #include "fonts/prompter_sans_26.h"
 #include "fonts/prompter_sans_32.h"
@@ -43,12 +45,17 @@ constexpr int kScanSeconds = 10;
 constexpr size_t kSettingsMax = prompter::kMaxSettingsBytes;
 
 // Arbitrary ids, clear of fontIds.h's hashes and Toybox's 0x70B0'xxxx.
-constexpr int kSizeFontIds[prompter::kSizeCount] = {0x7072'0001, 0x7072'0002, 0x7072'0003, 0x7072'0004};
+constexpr int kSizeFontIds[prompter::kSizeCount] = {0x7072'0005, 0x7072'0006, 0x7072'0001,
+                                                    0x7072'0002, 0x7072'0003, 0x7072'0004};
 
+EpdFont sans14(&prompter_sans_14);
+EpdFont sans17(&prompter_sans_17);
 EpdFont sans20(&prompter_sans_20);
 EpdFont sans26(&prompter_sans_26);
 EpdFont sans32(&prompter_sans_32);
 EpdFont sans40(&prompter_sans_40);
+EpdFontFamily sans14Family(&sans14);
+EpdFontFamily sans17Family(&sans17);
 EpdFontFamily sans20Family(&sans20);
 EpdFontFamily sans26Family(&sans26);
 EpdFontFamily sans32Family(&sans32);
@@ -57,10 +64,12 @@ bool fontsRegistered = false;
 
 void ensurePrompterFonts(GfxRenderer& renderer) {
   if (fontsRegistered) return;
-  renderer.insertFont(kSizeFontIds[0], sans20Family);
-  renderer.insertFont(kSizeFontIds[1], sans26Family);
-  renderer.insertFont(kSizeFontIds[2], sans32Family);
-  renderer.insertFont(kSizeFontIds[3], sans40Family);
+  renderer.insertFont(kSizeFontIds[0], sans14Family);
+  renderer.insertFont(kSizeFontIds[1], sans17Family);
+  renderer.insertFont(kSizeFontIds[2], sans20Family);
+  renderer.insertFont(kSizeFontIds[3], sans26Family);
+  renderer.insertFont(kSizeFontIds[4], sans32Family);
+  renderer.insertFont(kSizeFontIds[5], sans40Family);
   fontsRegistered = true;
 }
 
@@ -309,7 +318,11 @@ std::string PrompterActivity::turnerStatus() const {
   if (!prompter::TurnerLink::available()) {
     return "This build has no Bluetooth, so a page turner cannot connect. The side keys and taps still turn pages.";
   }
-  if (!turner_.running()) return "Bluetooth did not start. Leave Prompter and open it again.";
+  if (!turner_.running()) {
+    const std::string why = turner_.failure();
+    return "Bluetooth did not start" + (why.empty() ? std::string() : ": " + why) +
+           ". Leave Prompter and open it again.";
+  }
   const std::string name = settings_.turnerName.empty() ? settings_.turnerAddress : settings_.turnerName;
   if (turner_.scanning()) return "Looking for page turners. Put yours in pairing mode now, then tap it below.";
   switch (turner_.state()) {

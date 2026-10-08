@@ -17,7 +17,9 @@ namespace prompter {
 // --- Settings ----------------------------------------------------------------
 
 // The text sizes the reader offers, smallest first. The index is what is saved.
-constexpr int kSizeCount = 4;
+constexpr int kSizeCount = 6;
+// The default, 26 px.
+constexpr int kDefaultSize = 3;
 // Seconds a page stays up before the timer turns it; 0 is off.
 constexpr int kAutoChoices[] = {0, 5, 10, 15, 20, 30, 45, 60, 90, 120, 180};
 constexpr int kAutoChoiceCount = static_cast<int>(sizeof(kAutoChoices) / sizeof(kAutoChoices[0]));
@@ -27,7 +29,7 @@ constexpr size_t kMaxScriptBytes = 128 * 1024;
 constexpr size_t kMaxNameBytes = 48;
 
 struct Settings {
-  int size = 1;
+  int size = kDefaultSize;
   int autoSeconds = 0;
   bool landscape = false;
   // White words on black, the way a studio prompter reads.
