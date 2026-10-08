@@ -109,10 +109,9 @@ fui::Rect previewFrame(toybox::Screen& screen, const fui::Rect& box, const bool 
   screen.target().fill(
       fui::makeRect(static_cast<int16_t>(frame.x + frame.width - toybox::kRule), frame.y, toybox::kRule, frame.height),
       rule);
-  const fui::Rect inside =
-      fui::makeRect(static_cast<int16_t>(frame.x + toybox::kRule), static_cast<int16_t>(frame.y + toybox::kRule),
-                    static_cast<int16_t>(frame.width - 2 * toybox::kRule),
-                    static_cast<int16_t>(frame.height - 2 * toybox::kRule));
+  const fui::Rect inside = fui::makeRect(
+      static_cast<int16_t>(frame.x + toybox::kRule), static_cast<int16_t>(frame.y + toybox::kRule),
+      static_cast<int16_t>(frame.width - 2 * toybox::kRule), static_cast<int16_t>(frame.height - 2 * toybox::kRule));
   if (!hasImage) {
     fittedLine(screen,
                fui::makeRect(inside.x, static_cast<int16_t>(inside.y + inside.height / 2 - 12), inside.width, 24),
