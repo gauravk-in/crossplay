@@ -32,7 +32,6 @@
 #include "knucklebones/KnucklebonesActivity.h"
 #include "minesweeper/MinesweeperActivity.h"
 #include "murdle/MurdleActivity.h"
-#include "notes/NotesActivity.h"
 #include "picross/PicrossActivity.h"
 #include "player/PlayerActivity.h"
 #include "pomodoro/PomodoroActivity.h"
@@ -51,9 +50,7 @@
 #include "underhand/UnderhandActivity.h"
 #include "wallet/WalletActivity.h"
 #include "wallet/WalletIcons.h"
-#include "wallpapers/WallpapersActivity.h"
 #include "wavelength/WavelengthActivity.h"
-#include "wikipedia/WikipediaActivity.h"
 #include "wordle/WordleActivity.h"
 #include "workouts/WorkoutsActivity.h"
 #include "workouts/WorkoutsIcons.h"
@@ -99,13 +96,8 @@ constexpr shelf::Item kApps[] = {
     {"XKCD", &icon_xkcd_32, &XkcdActivity::create},
     {"INSTAPAPER", &icon_instapaper_32, &InstapaperActivity::create},
     {"CARDS", &icon_wallet_mark_32, &WalletActivity::create},
-    {"WALLPAPERS", &icon_wallpapers_32, &WallpapersActivity::create},
-    {"WIKIPEDIA", &icon_wikipedia_32, &WikipediaActivity::create},
     {"CALCULATOR", &icon_calculator_32, &CalculatorActivity::create},
     {"POMODORO", &icon_pomodoro_mark_32, &PomodoroActivity::create},
-    // Card #516. The icon is the Lucide list mark borrowed from Murdle while
-    // the screens are being chosen; a Notes mark comes with the real app.
-    {"NOTES", &icon_murdle_face_clues_32, &NotesActivity::create},
     {"TASKS", &icon_gtasks_32, &GTasksActivity::create},
     {"CALENDAR", &icon_gcal_32, &GCalActivity::create},
     {"TRMNL", &icon_trmnl_32, &TrmnlActivity::create},
