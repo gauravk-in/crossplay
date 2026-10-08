@@ -33,6 +33,8 @@
 #include "notes/NotesActivity.h"
 #include "picross/PicrossActivity.h"
 #include "player/PlayerActivity.h"
+#include "prompter/PrompterActivity.h"
+#include "prompter/PrompterIcons.h"
 #include "seasalt/SeaSaltActivity.h"
 #include "solitaire/SolitaireActivity.h"
 #include "study/StudyActivity.h"
@@ -91,6 +93,7 @@ constexpr shelf::Item kApps[] = {
     // Card #516. The icon is the Lucide list mark borrowed from Murdle while
     // the screens are being chosen; a Notes mark comes with the real app.
     {"NOTES", &icon_murdle_face_clues_32, &NotesActivity::create},
+    {"PROMPTER", &icon_prompter_mark_32, &PrompterActivity::create},
 };
 
 // The two rows Home grows, in reading order. Titles are Title Case because
