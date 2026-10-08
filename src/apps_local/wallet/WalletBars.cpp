@@ -13,10 +13,14 @@ struct KindInfo {
 };
 
 constexpr KindInfo kKinds[] = {
-    {CodeKind::Qr, "qr", "QR"},           {CodeKind::Code128, "code128", "CODE 128"},
-    {CodeKind::Code39, "code39", "CODE 39"}, {CodeKind::Ean13, "ean13", "EAN-13"},
-    {CodeKind::Ean8, "ean8", "EAN-8"},      {CodeKind::UpcA, "upca", "UPC-A"},
-    {CodeKind::UpcE, "upce", "UPC-E"},      {CodeKind::Itf, "itf", "ITF"},
+    {CodeKind::Qr, "qr", "QR"},
+    {CodeKind::Code128, "code128", "CODE 128"},
+    {CodeKind::Code39, "code39", "CODE 39"},
+    {CodeKind::Ean13, "ean13", "EAN-13"},
+    {CodeKind::Ean8, "ean8", "EAN-8"},
+    {CodeKind::UpcA, "upca", "UPC-A"},
+    {CodeKind::UpcE, "upce", "UPC-E"},
+    {CodeKind::Itf, "itf", "ITF"},
     {CodeKind::Codabar, "codabar", "CODABAR"},
 };
 
