@@ -40,6 +40,15 @@ constexpr int kMaxReports = 8;
 constexpr uint32_t kWorkerStack = 6144;
 // Long enough for a first pairing, which the remote may hold for a keypress.
 constexpr uint32_t kPairTimeoutMs = 30000;
+// What the framework sends to internal RAM by default (CONFIG_SPIRAM_MALLOC_ALWAYSINTERNAL).
+constexpr size_t kInternalMallocLimit = 4096;
+
+// FreeRTOS queues and semaphores always come from internal RAM, and the BLE
+// library creates three per remote characteristic without checking the result:
+// when internal RAM runs out mid-discovery it gives a null semaphore and the
+// reader halts in xQueueGenericSend. While the radio is up, ordinary small
+// allocations go to PSRAM so internal RAM is left for the stack's own objects.
+void preferPsram(const bool on) { heap_caps_malloc_extmem_enable(on ? 0 : kInternalMallocLimit); }
 
 // The last line ESP-IDF or the BLE library logged while the radio came up: the
 // library reports why init failed only there, and a reader has no serial port.
@@ -305,6 +314,7 @@ bool TurnerLink::begin() {
   const unsigned blockKb = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL) / 1024;
   const bool wifiOn = WiFi.getMode() != WIFI_MODE_NULL;
   initLog[0] = '\0';
+  preferPsram(true);
   passLog = esp_log_set_vprintf(&captureLog);
   const bool up = BLEDevice::init("CrossPlay");
   esp_log_set_vprintf(passLog);
@@ -314,6 +324,7 @@ bool TurnerLink::begin() {
     snprintf(why, sizeof(why), "%s (RAM %uK free, %uK block%s)", initLog[0] != '\0' ? initLog : "no error logged",
              freeKb, blockKb, wifiOn ? ", Wi-Fi on" : "");
     LOG_ERR("PROMPT", "BLE init failed: %s", why);
+    preferPsram(false);
     xSemaphoreTake(g.lock, portMAX_DELAY);
     g.failure = why;
     xSemaphoreGive(g.lock);
@@ -340,6 +351,7 @@ bool TurnerLink::begin() {
     xSemaphoreGive(g.lock);
     g.workerDone.store(true);
     BLEDevice::deinit(false);
+    preferPsram(false);
     setState(State::Off);
     return false;
   }
@@ -360,6 +372,7 @@ void TurnerLink::end() {
   g.client = nullptr;
   g.reportCount = 0;
   BLEDevice::deinit(false);
+  preferPsram(false);
   setState(State::Off);
   xSemaphoreTake(g.lock, portMAX_DELAY);
   g.found.clear();
