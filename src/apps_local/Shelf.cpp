@@ -30,7 +30,6 @@
 #include "knucklebones/KnucklebonesActivity.h"
 #include "minesweeper/MinesweeperActivity.h"
 #include "murdle/MurdleActivity.h"
-#include "notes/NotesActivity.h"
 #include "picross/PicrossActivity.h"
 #include "player/PlayerActivity.h"
 #include "seasalt/SeaSaltActivity.h"
@@ -41,9 +40,7 @@
 #include "trivia/TriviaActivity.h"
 #include "ui/ToyboxIcons.h"
 #include "underhand/UnderhandActivity.h"
-#include "wallpapers/WallpapersActivity.h"
 #include "wavelength/WavelengthActivity.h"
-#include "wikipedia/WikipediaActivity.h"
 #include "wordle/WordleActivity.h"
 #include "xkcd/XkcdActivity.h"
 #include "yahtzee/YahtzeeActivity.h"
@@ -85,12 +82,7 @@ constexpr shelf::Item kApps[] = {
     {"HACKER NEWS", &icon_hackernews_32, &HackerNewsActivity::create},
     {"XKCD", &icon_xkcd_32, &XkcdActivity::create},
     {"INSTAPAPER", &icon_instapaper_32, &InstapaperActivity::create},
-    {"WALLPAPERS", &icon_wallpapers_32, &WallpapersActivity::create},
-    {"WIKIPEDIA", &icon_wikipedia_32, &WikipediaActivity::create},
     {"CALCULATOR", &icon_calculator_32, &CalculatorActivity::create},
-    // Card #516. The icon is the Lucide list mark borrowed from Murdle while
-    // the screens are being chosen; a Notes mark comes with the real app.
-    {"NOTES", &icon_murdle_face_clues_32, &NotesActivity::create},
 };
 
 // The two rows Home grows, in reading order. Titles are Title Case because

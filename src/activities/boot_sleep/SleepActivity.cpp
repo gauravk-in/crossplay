@@ -24,7 +24,6 @@
 #include "CrossPointSettings.h"
 #include "CrossPointState.h"
 #include "activities/reader/ReaderUtils.h"
-#include "apps_local/notes/NotesSleep.h"
 #include "components/UITheme.h"
 #include "fontIds.h"
 #include "images/Logo120.h"
@@ -581,13 +580,8 @@ void SleepActivity::onEnter() {
         return renderCustomSleepScreen();
       }
     case (CrossPointSettings::SLEEP_SCREEN_MODE::NOTE):
-      // CrossPlay: the note chosen in Notes, drawn from its file now so it is
-      // never an old picture of itself. No note, or a note since deleted, is
-      // the default screen rather than an empty page.
-      if (notes::drawAsleep(renderer)) {
-        renderer.displayBuffer(HalDisplay::HALF_REFRESH);
-        return;
-      }
+      // CrossPlay: Notes is not in this build, so a saved Note choice sleeps
+      // on the default screen.
       return renderDefaultSleepScreen();
     default:
       return renderDefaultSleepScreen();
