@@ -37,6 +37,8 @@
 #include "player/PlayerActivity.h"
 #include "pomodoro/PomodoroActivity.h"
 #include "pomodoro/PomodoroIcons.h"
+#include "prompter/PrompterActivity.h"
+#include "prompter/PrompterIcons.h"
 #include "seasalt/SeaSaltActivity.h"
 #include "solitaire/SolitaireActivity.h"
 #include "study/StudyActivity.h"
@@ -107,6 +109,7 @@ constexpr shelf::Item kApps[] = {
     {"TASKS", &icon_gtasks_32, &GTasksActivity::create},
     {"CALENDAR", &icon_gcal_32, &GCalActivity::create},
     {"TRMNL", &icon_trmnl_32, &TrmnlActivity::create},
+    {"PROMPTER", &icon_prompter_mark_32, &PrompterActivity::create},
 };
 
 // The two rows Home grows, in reading order. Titles are Title Case because
