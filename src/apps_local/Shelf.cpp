@@ -51,6 +51,8 @@
 #include "wallet/WalletActivity.h"
 #include "wallet/WalletIcons.h"
 #include "wavelength/WavelengthActivity.h"
+#include "weather/WeatherActivity.h"
+#include "weather/WeatherUiIcons.h"
 #include "wordle/WordleActivity.h"
 #include "workouts/WorkoutsActivity.h"
 #include "workouts/WorkoutsIcons.h"
@@ -102,6 +104,7 @@ constexpr shelf::Item kApps[] = {
     {"CALENDAR", &icon_gcal_32, &GCalActivity::create},
     {"TRMNL", &icon_trmnl_32, &TrmnlActivity::create},
     {"PROMPTER", &icon_prompter_mark_32, &PrompterActivity::create},
+    {"WEATHER", &icon_weather_32, &WeatherActivity::create},
 };
 
 // The two rows Home grows, in reading order. Titles are Title Case because
