@@ -591,6 +591,13 @@ void setupDisplayAndFonts(bool seamless = false) {
   renderer.insertFont(NOTOSANS_14_FONT_ID, notosans14FontFamily);
   renderer.insertFont(NOTOSANS_16_FONT_ID, notosans16FontFamily);
   renderer.insertFont(NOTOSANS_18_FONT_ID, notosans18FontFamily);
+#else
+  // Every built-in reader font ID still resolves, so screens that name a size or
+  // a sans face directly draw in Serif 14 rather than draw nothing.
+  for (const int id : {NOTOSERIF_12_FONT_ID, NOTOSERIF_16_FONT_ID, NOTOSERIF_18_FONT_ID, NOTOSANS_12_FONT_ID,
+                       NOTOSANS_14_FONT_ID, NOTOSANS_16_FONT_ID, NOTOSANS_18_FONT_ID}) {
+    renderer.insertFont(id, notoserif14FontFamily);
+  }
 #endif  // OMIT_FONTS
   renderer.insertFont(UI_10_FONT_ID, ui10FontFamily);
   renderer.insertFont(UI_12_FONT_ID, ui12FontFamily);
