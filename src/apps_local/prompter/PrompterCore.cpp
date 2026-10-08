@@ -54,8 +54,11 @@ Settings parseSettings(const std::string& text) {
     if (eq == std::string::npos) continue;
     const std::string key = trim(line.substr(0, eq));
     const std::string value = trim(line.substr(eq + 1));
-    if (key == "size") {
+    if (key == "text_size") {
       s.size = clampInt(std::atoi(value.c_str()), 0, kSizeCount - 1);
+    } else if (key == "size") {
+      // Saved before the two smaller sizes went in front of the list.
+      s.size = clampInt(std::atoi(value.c_str()) + 2, 0, kSizeCount - 1);
     } else if (key == "auto") {
       const int seconds = std::atoi(value.c_str());
       s.autoSeconds = knownAuto(seconds) ? seconds : 0;
@@ -83,7 +86,7 @@ Settings parseSettings(const std::string& text) {
 std::string formatSettings(const Settings& s) {
   char head[128];
   std::snprintf(head, sizeof(head),
-                "size=%d\nauto=%d\nlandscape=%d\ndark=%d\nswap_turner=%d\npage=%d\nturner_type=%d\n", s.size,
+                "text_size=%d\nauto=%d\nlandscape=%d\ndark=%d\nswap_turner=%d\npage=%d\nturner_type=%d\n", s.size,
                 s.autoSeconds, s.landscape ? 1 : 0, s.dark ? 1 : 0, s.swapTurner ? 1 : 0, s.page, s.turnerType);
   std::string out = head;
   out += "turner=" + printable(s.turnerAddress, 17) + "\n";

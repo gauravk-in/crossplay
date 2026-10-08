@@ -60,6 +60,8 @@ class TurnerLink {
   State state() const;
   // The remote's name once connected, or why the last attempt failed.
   std::string detail() const;
+  // Why begin() last failed, as the radio stack said it; empty once it starts.
+  std::string failure() const;
   // The next page turn pressed on the remote, or None.
   Turn takeTurn();
   // Counts up on every connect and drop, so a screen can tell it changed.

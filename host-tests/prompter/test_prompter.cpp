@@ -45,8 +45,11 @@ void testSettingsRoundTrip() {
   check(bad.script.empty(), "a path is not a script name");
   check(bad.page == 0, "page clamps at zero");
 
+  check(prompter::parseSettings("size=1\n").size == 3, "an old saved size keeps its cut");
+
   const prompter::Settings defaults = prompter::parseSettings("");
-  check(defaults.size == 1 && defaults.autoSeconds == 0 && !defaults.landscape, "empty file is defaults");
+  check(defaults.size == prompter::kDefaultSize && defaults.autoSeconds == 0 && !defaults.landscape,
+        "empty file is defaults");
 }
 
 void testAutoChoices() {
