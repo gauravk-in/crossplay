@@ -421,10 +421,15 @@ int PageTimer::permille(const uint32_t now) const {
 // --- Page turners ------------------------------------------------------------
 
 ReportKind ReportKinds::kindOf(const uint8_t id) const {
+  const Entry* e = find(id);
+  return e != nullptr ? e->kind : ReportKind::Unknown;
+}
+
+const ReportKinds::Entry* ReportKinds::find(const uint8_t id) const {
   for (const Entry& e : entries) {
-    if (e.id == id) return e.kind;
+    if (e.id == id) return &e;
   }
-  return ReportKind::Unknown;
+  return nullptr;
 }
 
 namespace {
@@ -451,9 +456,19 @@ ReportKinds parseReportMap(const uint8_t* map, const size_t len) {
   uint32_t usagePage = 0;
   uint32_t localPage = 0;  // from an extended (32-bit) Usage, which names its own page
   uint8_t reportId = 0;
+  uint32_t reportSize = 0;
+  uint32_t reportCount = 0;
   uint32_t pageStack[4] = {};
   uint8_t idStack[4] = {};
+  uint32_t sizeStack[4] = {};
+  uint32_t countStack[4] = {};
   int depth = 0;
+  // Local usages, which name the fields of the next main item.
+  uint16_t usages[ConsumerBits::kMax] = {};
+  int usageCount = 0;
+  uint32_t usageMin = 0;
+  uint32_t usageMax = 0;
+  bool haveRange = false;
 
   size_t i = 0;
   while (i < len) {
@@ -475,33 +490,74 @@ ReportKinds parseReportMap(const uint8_t* map, const size_t len) {
     if (type == 1) {  // global
       if (tag == 0x0) {
         usagePage = value;
+      } else if (tag == 0x7) {
+        reportSize = value;
       } else if (tag == 0x8) {
         reportId = static_cast<uint8_t>(value);
+      } else if (tag == 0x9) {
+        reportCount = value;
       } else if (tag == 0xA && depth < 4) {
         pageStack[depth] = usagePage;
         idStack[depth] = reportId;
+        sizeStack[depth] = reportSize;
+        countStack[depth] = reportCount;
         ++depth;
       } else if (tag == 0xB && depth > 0) {
         --depth;
         usagePage = pageStack[depth];
         reportId = idStack[depth];
+        reportSize = sizeStack[depth];
+        reportCount = countStack[depth];
       }
     } else if (type == 2) {  // local
-      if (tag == 0x0 && size == 4) localPage = value >> 16;
+      if (tag == 0x0) {
+        if (size == 4) localPage = value >> 16;
+        if (usageCount < ConsumerBits::kMax) usages[usageCount++] = static_cast<uint16_t>(value & 0xFFFF);
+      } else if (tag == 0x1) {
+        usageMin = value & 0xFFFF;
+        haveRange = true;
+      } else if (tag == 0x2) {
+        usageMax = value & 0xFFFF;
+        haveRange = true;
+      }
     } else if (type == 0) {  // main
       if (tag == 0x8) {      // Input
-        const ReportKind kind = kindForPage(localPage != 0 ? localPage : usagePage);
-        bool found = false;
+        const uint32_t page = localPage != 0 ? localPage : usagePage;
+        const ReportKind kind = kindForPage(page);
+        ReportKinds::Entry* entry = nullptr;
         for (ReportKinds::Entry& e : out.entries) {
-          if (e.id == reportId) {
-            e.kind = stronger(e.kind, kind);
-            found = true;
+          if (e.id == reportId) entry = &e;
+        }
+        if (entry == nullptr) {
+          out.entries.push_back({reportId, kind, ConsumerBits{}, 0});
+          entry = &out.entries.back();
+        } else {
+          entry->kind = stronger(entry->kind, kind);
+        }
+        // A variable, non-constant field of one-bit consumer keys: note each bit.
+        const bool constant = (value & 0x01) != 0;
+        const bool variable = (value & 0x02) != 0;
+        if (page == 0x0C && variable && !constant && reportSize == 1) {
+          for (uint32_t k = 0; k < reportCount && entry->bits.count < ConsumerBits::kMax; ++k) {
+            uint32_t usage = 0;
+            if (usageCount > 0) {
+              usage = usages[k < static_cast<uint32_t>(usageCount) ? k : usageCount - 1];
+            } else if (haveRange) {
+              usage = usageMin + k <= usageMax ? usageMin + k : usageMax;
+            }
+            entry->bits.offset[entry->bits.count] = static_cast<uint16_t>(entry->size + k);
+            entry->bits.usage[entry->bits.count] = static_cast<uint16_t>(usage);
+            ++entry->bits.count;
           }
         }
-        if (!found) out.entries.push_back({reportId, kind});
+        entry->size = static_cast<uint16_t>(entry->size + reportSize * reportCount);
       }
       // Every main item ends the local state.
       localPage = 0;
+      usageCount = 0;
+      haveRange = false;
+      usageMin = 0;
+      usageMax = 0;
     }
     i += 1 + size;
   }
@@ -558,10 +614,30 @@ Turn applySwap(const Turn turn, const bool swap) {
 void TurnDecoder::reset() {
   keyCount_ = 0;
   consumer_ = 0;
+  consumerBits_ = 0;
+  unknown_ = false;
 }
 
-Turn TurnDecoder::feed(ReportKind kind, const uint8_t* data, const size_t len) {
+Turn TurnDecoder::feed(ReportKind kind, const uint8_t* data, const size_t len, const ConsumerBits* bits) {
+  unknown_ = false;
   if (data == nullptr || len == 0) return Turn::None;
+  if (kind != ReportKind::Keyboard && bits != nullptr && bits->count > 0) {
+    uint32_t now = 0;
+    for (int i = 0; i < bits->count; ++i) {
+      const uint16_t at = bits->offset[i];
+      if (at / 8 < len && ((data[at / 8] >> (at % 8)) & 1) != 0) now |= 1u << i;
+    }
+    const uint32_t pressed = now & ~consumerBits_;
+    consumerBits_ = now;
+    for (int i = 0; i < bits->count; ++i) {
+      if ((pressed >> i) & 1) {
+        const Turn turn = consumerTurn(bits->usage[i]);
+        if (turn != Turn::None) return turn;
+      }
+    }
+    unknown_ = pressed != 0;
+    return Turn::None;
+  }
   if (kind == ReportKind::Unknown) kind = len >= 8 ? ReportKind::Keyboard : len <= 2 ? ReportKind::Consumer : kind;
 
   if (kind == ReportKind::Keyboard) {
@@ -577,7 +653,10 @@ Turn TurnDecoder::feed(ReportKind kind, const uint8_t* data, const size_t len) {
     for (size_t i = 0; i < count && turn == Turn::None; ++i) {
       bool held = false;
       for (size_t j = 0; j < keyCount_; ++j) held = held || keys_[j] == now[i];
-      if (!held) turn = keyboardTurn(now[i]);
+      if (!held) {
+        turn = keyboardTurn(now[i]);
+        unknown_ = turn == Turn::None;
+      }
     }
     for (size_t i = 0; i < count; ++i) keys_[i] = now[i];
     keyCount_ = count;
@@ -589,7 +668,9 @@ Turn TurnDecoder::feed(ReportKind kind, const uint8_t* data, const size_t len) {
     const uint16_t before = consumer_;
     consumer_ = usage;
     if (usage == 0 || usage == before) return Turn::None;
-    return consumerTurn(usage);
+    const Turn turn = consumerTurn(usage);
+    unknown_ = turn == Turn::None;
+    return turn;
   }
   return Turn::None;
 }

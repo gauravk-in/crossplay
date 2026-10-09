@@ -164,6 +164,35 @@ void testReportMap() {
   check(prompter::parseReportMap(nullptr, 4).entries.empty(), "no map");
 }
 
+void testShutterRemote() {
+  using prompter::ReportKind;
+  using prompter::Turn;
+  // A camera shutter remote: report 2 is two one-bit consumer keys and padding.
+  const uint8_t map[] = {0x05, 0x0C, 0x09, 0x01, 0xA1, 0x01, 0x85, 0x02, 0x15, 0x00, 0x25, 0x01, 0x75, 0x01,
+                         0x95, 0x02, 0x09, 0xE9, 0x09, 0xEA, 0x81, 0x02, 0x95, 0x06, 0x81, 0x03, 0xC0};
+  const prompter::ReportKinds kinds = prompter::parseReportMap(map, sizeof(map));
+  const prompter::ReportKinds::Entry* e = kinds.find(2);
+  check(e != nullptr && e->kind == ReportKind::Consumer, "report 2 is consumer control");
+  check(e != nullptr && e->bits.count == 2, "two key bits, padding left out");
+  check(e != nullptr && e->bits.usage[0] == 0xE9 && e->bits.offset[1] == 1, "bits keep their usage and place");
+
+  prompter::TurnDecoder d;
+  const uint8_t up[1] = {0x01};
+  const uint8_t down[1] = {0x02};
+  const uint8_t none[1] = {0x00};
+  check(d.feed(ReportKind::Consumer, up, 1, &e->bits) == Turn::Back, "the shutter's volume up");
+  check(d.feed(ReportKind::Consumer, up, 1, &e->bits) == Turn::None, "held is one turn");
+  check(d.feed(ReportKind::Consumer, none, 1, &e->bits) == Turn::None, "release");
+  check(d.feed(ReportKind::Consumer, down, 1, &e->bits) == Turn::Next, "volume down");
+
+  // The same keys declared as a usage range.
+  const uint8_t ranged[] = {0x05, 0x0C, 0x09, 0x01, 0xA1, 0x01, 0x15, 0x00, 0x25, 0x01, 0x75, 0x01, 0x95,
+                            0x02, 0x19, 0xE9, 0x29, 0xEA, 0x81, 0x02, 0x95, 0x06, 0x81, 0x01, 0xC0};
+  const prompter::ReportKinds rk = prompter::parseReportMap(ranged, sizeof(ranged));
+  const prompter::ReportKinds::Entry* r = rk.find(0);
+  check(r != nullptr && r->bits.count == 2 && r->bits.usage[1] == 0xEA, "a usage range names each bit");
+}
+
 void testDecoder() {
   using prompter::ReportKind;
   using prompter::Turn;
@@ -193,6 +222,11 @@ void testDecoder() {
   d.reset();
   check(d.feed(ReportKind::Keyboard, shortKey, 3) == Turn::Next, "a short keyboard report skips no reserved byte");
 
+  const uint8_t f13[8] = {0, 0, 0x68, 0, 0, 0, 0, 0};
+  d.reset();
+  check(d.feed(ReportKind::Keyboard, f13, 8) == Turn::None && d.unknownPress(), "an unmapped key is reported");
+  check(d.feed(ReportKind::Keyboard, f13, 8) == Turn::None && !d.unknownPress(), "but only when pressed");
+
   check(prompter::applySwap(Turn::Next, true) == Turn::Back, "swap");
   check(prompter::applySwap(Turn::Toggle, true) == Turn::Toggle, "swap leaves toggle");
   check(prompter::applySwap(Turn::Next, false) == Turn::Next, "no swap");
@@ -208,6 +242,7 @@ int main() {
   testPaginate();
   testTimer();
   testReportMap();
+  testShutterRemote();
   testDecoder();
   if (failures != 0) {
     std::printf("prompter: %d failure(s)\n", failures);

@@ -96,12 +96,14 @@ struct Shared {
   int wantType = 0;
   std::string detail;
   std::string failure;
+  std::string unknownKey;  // the last press no turn is mapped to, as hex
 
   // Written by the worker while connecting, read by the host task's notify
   // callback after; a remote's reports cannot arrive before it subscribes.
   struct Report {
     uint16_t handle;
     ReportKind kind;
+    ConsumerBits bits;
   };
   Report reports[kMaxReports] = {};
   int reportCount = 0;
@@ -167,13 +169,27 @@ ClientCallbacks clientCallbacks;
 
 void onReport(BLERemoteCharacteristic* characteristic, uint8_t* data, const size_t length, bool) {
   if (characteristic == nullptr || g.turns == nullptr) return;
-  ReportKind kind = ReportKind::Unknown;
+  const Shared::Report* report = nullptr;
   const uint16_t handle = characteristic->getHandle();
   for (int i = 0; i < g.reportCount; ++i) {
-    if (g.reports[i].handle == handle) kind = g.reports[i].kind;
+    if (g.reports[i].handle == handle) report = &g.reports[i];
   }
-  const Turn turn = applySwap(g.decoder.feed(kind, data, length), g.swap.load());
-  if (turn != Turn::None) xQueueSend(g.turns, &turn, 0);
+  const ReportKind kind = report != nullptr ? report->kind : ReportKind::Unknown;
+  const ConsumerBits* bits = report != nullptr && report->bits.count > 0 ? &report->bits : nullptr;
+  const Turn turn = applySwap(g.decoder.feed(kind, data, length, bits), g.swap.load());
+  if (turn != Turn::None) {
+    xQueueSend(g.turns, &turn, 0);
+  } else if (g.decoder.unknownPress()) {
+    // Shown on the page turner screen, so a key nobody mapped can be named.
+    char hex[3 * 8 + 1] = "";
+    for (size_t i = 0; i < length && i < 8; ++i) {
+      snprintf(hex + 3 * i, sizeof(hex) - 3 * i, i == 0 ? "%02X" : " %02X", data[i]);
+    }
+    xSemaphoreTake(g.lock, portMAX_DELAY);
+    g.unknownKey = hex;
+    xSemaphoreGive(g.lock);
+    g.generation.fetch_add(1);
+  }
 }
 
 // Waits for the link to be encrypted. The BLE library starts security itself the
@@ -238,21 +254,29 @@ bool connectOnce(const std::string& address, const int type, std::string& why) {
 
   g.reportCount = 0;
   g.decoder.reset();
+  xSemaphoreTake(g.lock, portMAX_DELAY);
+  g.unknownKey.clear();
+  xSemaphoreGive(g.lock);
   int subscribed = 0;
   std::map<uint16_t, BLERemoteCharacteristic*>* all = hid->getCharacteristicsByHandle();
   if (all != nullptr) {
     for (auto& entry : *all) {
       BLERemoteCharacteristic* c = entry.second;
       if (c == nullptr || !(c->getUUID() == BLEUUID(kReport)) || !c->canNotify()) continue;
-      ReportKind kind = ReportKind::Unknown;
+      // A map without report ids declares everything under id 0.
+      uint8_t id = 0;
       if (BLERemoteDescriptor* ref = c->getDescriptor(BLEUUID(kReportReference))) {
         const String value = ref->readValue();
         // [report id, report type]; type 1 is an input report.
         if (value.length() >= 2 && static_cast<uint8_t>(value[1]) != 1) continue;
-        if (value.length() >= 1) kind = kinds.kindOf(static_cast<uint8_t>(value[0]));
+        if (value.length() >= 1) id = static_cast<uint8_t>(value[0]);
       }
+      const ReportKinds::Entry* declared = kinds.find(id);
+      const ReportKind kind = declared != nullptr ? declared->kind : ReportKind::Unknown;
       if (kind == ReportKind::Other) continue;
-      if (g.reportCount < kMaxReports) g.reports[g.reportCount++] = {c->getHandle(), kind};
+      if (g.reportCount < kMaxReports) {
+        g.reports[g.reportCount++] = {c->getHandle(), kind, declared != nullptr ? declared->bits : ConsumerBits{}};
+      }
       if (c->subscribe(true, onReport)) ++subscribed;
     }
   }
@@ -442,6 +466,14 @@ std::string TurnerLink::failure() const {
   return out;
 }
 
+std::string TurnerLink::unknownKey() const {
+  if (g.lock == nullptr) return std::string();
+  xSemaphoreTake(g.lock, portMAX_DELAY);
+  const std::string out = g.unknownKey;
+  xSemaphoreGive(g.lock);
+  return out;
+}
+
 Turn TurnerLink::takeTurn() {
   Turn turn = Turn::None;
   if (g.turns != nullptr && xQueueReceive(g.turns, &turn, 0) == pdTRUE) return turn;
@@ -467,6 +499,7 @@ void TurnerLink::forget() {}
 TurnerLink::State TurnerLink::state() const { return State::Off; }
 std::string TurnerLink::detail() const { return std::string(); }
 std::string TurnerLink::failure() const { return std::string(); }
+std::string TurnerLink::unknownKey() const { return std::string(); }
 Turn TurnerLink::takeTurn() { return Turn::None; }
 uint32_t TurnerLink::generation() const { return 0; }
 

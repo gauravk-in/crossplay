@@ -62,6 +62,8 @@ class TurnerLink {
   std::string detail() const;
   // Why begin() last failed, as the radio stack said it; empty once it starts.
   std::string failure() const;
+  // The bytes of the last key press that maps to no turn, empty if none.
+  std::string unknownKey() const;
   // The next page turn pressed on the remote, or None.
   Turn takeTurn();
   // Counts up on every connect and drop, so a screen can tell it changed.

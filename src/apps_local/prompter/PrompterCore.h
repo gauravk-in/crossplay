@@ -137,15 +137,27 @@ enum class Turn : uint8_t { None, Next, Back, Toggle };
 // What a HID report carries, from its report map.
 enum class ReportKind : uint8_t { Unknown, Keyboard, Consumer, Other };
 
+// Consumer keys sent as one bit each rather than as a usage code, as camera
+// shutter remotes do: where each key's bit sits in the report.
+struct ConsumerBits {
+  static constexpr int kMax = 16;
+  uint8_t count = 0;
+  uint16_t offset[kMax] = {};
+  uint16_t usage[kMax] = {};
+};
+
 // The kind of each report id declared in a HID report map, read from the usage
 // page in force at each Input item. Id 0 stands for a map with no report ids.
 struct ReportKinds {
   struct Entry {
     uint8_t id;
     ReportKind kind;
+    ConsumerBits bits;
+    uint16_t size = 0;  // input bits declared so far
   };
   std::vector<Entry> entries;
   ReportKind kindOf(uint8_t id) const;
+  const Entry* find(uint8_t id) const;
 };
 ReportKinds parseReportMap(const uint8_t* map, size_t len);
 
@@ -155,13 +167,18 @@ class TurnDecoder {
  public:
   // `kind` comes from the report map; Unknown guesses from the length, since a
   // boot keyboard report is eight bytes and a consumer report two.
-  Turn feed(ReportKind kind, const uint8_t* data, size_t len);
+  // `bits`, when the report map gave any, reads consumer keys as one bit each.
+  Turn feed(ReportKind kind, const uint8_t* data, size_t len, const ConsumerBits* bits = nullptr);
   void reset();
+  // The last feed was a new key press that maps to no turn.
+  bool unknownPress() const { return unknown_; }
 
  private:
   uint8_t keys_[8] = {};
   size_t keyCount_ = 0;
   uint16_t consumer_ = 0;
+  uint32_t consumerBits_ = 0;
+  bool unknown_ = false;
 };
 
 Turn keyboardTurn(uint8_t usage);
