@@ -25,6 +25,7 @@
 #include "../../src/apps_local/dungeon/DungeonScreens.h"
 #include "../../src/apps_local/forehead/ForeheadScreens.h"
 #include "../../src/apps_local/go/GoScreens.h"
+#include "../../src/apps_local/gtasks/GTasksScreens.h"
 #include "../../src/apps_local/hackernews/HackerNewsScreens.h"
 #include "../../src/apps_local/hearts/HeartsBrain.h"
 #include "../../src/apps_local/hearts/HeartsScreens.h"
@@ -14618,6 +14619,309 @@ void aNoteAsleepIsReadOnlyAndTaller() {
 
 }  // namespace notestest
 
+namespace gtaskstest {
+
+template <typename Build>
+void render(Rendered& out, Build build) {
+  const fui::DeviceContext ctx = device();
+  const fui::InputSnapshot noInput{};
+  toybox::Frame frame(out.target, ctx, noInput, out.interactions);
+  toybox::Screen screen(frame, toybox::themeTokens());
+  build(screen);
+}
+
+// Where a control was registered, so a tap can be aimed at the table the paint
+// produced rather than at a coordinate copied from the builder.
+bool rectOf(const Rendered& out, const fui::ActionId action, const int value, fui::Rect& found) {
+  for (size_t i = 0; i < out.interactions.count(); ++i) {
+    const auto& entry = out.interactions.data()[i];
+    if (entry.action == action && (value < 0 || entry.value == value)) {
+      found = entry.rect;
+      return true;
+    }
+  }
+  return false;
+}
+
+int countOf(const Rendered& out, const fui::ActionId action) {
+  int n = 0;
+  for (size_t i = 0; i < out.interactions.count(); ++i) n += out.interactions.data()[i].action == action ? 1 : 0;
+  return n;
+}
+
+// A whole page of rows, every one tappable, and each tap naming its TASK (the
+// row's index in the whole list) rather than its slot on the glass. A page two
+// tap that reported slot 0 would tick page one's first task.
+void aTapOnARowNamesTheTaskNotTheSlot() {
+  std::vector<gtasksui::Row> all(40);
+  for (auto& r : all) r.title = "Buy milk";
+  std::vector<int> starts;
+  CHECK(gtasksui::paginate(Rendered().target, device(), all.data(), 40, false, starts) >= 2);
+  const int capacity = starts.size() > 1 ? starts[1] : 0;
+  CHECK(capacity >= 4);
+  std::vector<gtasksui::Row> rows(static_cast<size_t>(capacity));
+  for (auto& r : rows) r.title = "Buy milk";
+  rows[1].checked = true;
+  rows[2].due = "DUE 7 OCT";
+  rows[3].child = true;
+
+  Rendered out;
+  gtasksui::ListModel model;
+  model.title = "MY TASKS";
+  model.status = "2 TO SEND";
+  model.rows = rows.data();
+  model.count = capacity;
+  model.firstIndex = capacity;  // page two
+  model.pageLabel = "2 / 3";
+  model.canPagePrev = true;
+  model.canPageNext = true;
+  model.settingsIcon = &icon_go_settings_32;
+  render(out, [&](toybox::Screen& screen) { gtasksui::buildList(screen, model); });
+
+  CHECK(!out.interactions.overflowed());
+  CHECK(countOf(out, gtasksui::ActionToggle) == capacity);
+  for (int i = 0; i < capacity; ++i) {
+    fui::Rect row{};
+    CHECK(rectOf(out, gtasksui::ActionToggle, capacity + i, row));
+    const fui::ActionEvent hit = out.tap(row.x + row.width / 2, row.y + row.height / 2);
+    CHECK(hit.action == gtasksui::ActionToggle && hit.value == capacity + i);
+  }
+  CHECK(out.has(gtasksui::ActionRefresh));
+  CHECK(out.has(gtasksui::ActionSettings));
+  CHECK(out.has(gtasksui::ActionPagePrev));
+  CHECK(out.has(gtasksui::ActionPageNext));
+  CHECK(drewText(out, "2 / 3"));
+  CHECK(drewText(out, "DUE 7 OCT"));
+  CHECK(drewText(out, "2 TO SEND"));
+}
+
+// One page: no arrows to tap and no page label. The first page of a paged
+// list draws its back arrow but cannot be paged back.
+void theArrowsAppearOnlyWhenThereIsSomewhereToGo() {
+  gtasksui::Row one;
+  one.title = "Only task";
+  {
+    Rendered out;
+    gtasksui::ListModel model;
+    model.rows = &one;
+    model.count = 1;
+    render(out, [&](toybox::Screen& screen) { gtasksui::buildList(screen, model); });
+    CHECK(!out.has(gtasksui::ActionPagePrev));
+    CHECK(!out.has(gtasksui::ActionPageNext));
+    CHECK(out.has(gtasksui::ActionRefresh));
+  }
+  {
+    Rendered out;
+    gtasksui::ListModel model;
+    model.rows = &one;
+    model.count = 1;
+    model.pageLabel = "1 / 2";
+    model.canPageNext = true;
+    render(out, [&](toybox::Screen& screen) { gtasksui::buildList(screen, model); });
+    CHECK(!out.has(gtasksui::ActionPagePrev));
+    CHECK(out.has(gtasksui::ActionPageNext));
+  }
+}
+
+void anEmptyListSaysSoAndStillRefreshes() {
+  Rendered out;
+  gtasksui::ListModel model;
+  model.emptyHeadline = "NOT SYNCED YET";
+  model.emptyMessage = "Tap REFRESH to fetch your Google Tasks.";
+  render(out, [&](toybox::Screen& screen) { gtasksui::buildList(screen, model); });
+  CHECK(drewText(out, "NOT SYNCED YET"));
+  CHECK(out.has(gtasksui::ActionRefresh));
+  CHECK(countOf(out, gtasksui::ActionToggle) == 0);
+}
+
+// The interval row cycles; SIGN OUT is there only when there is an account.
+void settingsOffersSignOutOnlyWhenSignedIn() {
+  for (const bool signedIn : {false, true}) {
+    Rendered out;
+    gtasksui::SettingsModel model;
+    model.pollLabel = "EVERY MIN";
+    model.signedIn = signedIn;
+    render(out, [&](toybox::Screen& screen) { gtasksui::buildSettings(screen, model); });
+    CHECK(drewText(out, "EVERY MIN"));
+    CHECK(drewText(out, "AUTO SYNC"));
+    CHECK(drewText(out, "SIGN OUT") == signedIn);
+    CHECK(drewText(out, "SLEEP SCREEN") == signedIn);
+    CHECK(drewText(out, "SHOW"));
+    CHECK(countOf(out, gtasksui::ActionSettingRow) == (signedIn ? 4 : 2));
+    CHECK(out.has(gtasksui::ActionCloseSettings));
+  }
+}
+
+// KEEP sits where REFRESH and BACK TO TASKS sit, so a second jab at the bar
+// that opened the confirm keeps the account.
+void keepingTheAccountIsWhereTheThumbAlreadyIs() {
+  Rendered confirm;
+  render(confirm, [&](toybox::Screen& screen) { gtasksui::buildSignOutConfirm(screen, 2); });
+  Rendered settings;
+  gtasksui::SettingsModel model;
+  model.signedIn = true;
+  render(settings, [&](toybox::Screen& screen) { gtasksui::buildSettings(screen, model); });
+  fui::Rect back{};
+  CHECK(rectOf(settings, gtasksui::ActionCloseSettings, -1, back));
+  const fui::ActionEvent hit = confirm.tap(back.x + 8, back.y + back.height / 2);
+  CHECK(hit.action == gtasksui::ActionKeepSignedIn);
+  CHECK(drewText(confirm, "2 ticks"));
+}
+
+void signingInStartsWithOneButton() {
+  Rendered out;
+  render(out, [&](toybox::Screen& screen) { gtasksui::buildSignIn(screen, nullptr); });
+  CHECK(drewText(out, "SIGN IN"));
+  CHECK(countOf(out, gtasksui::ActionStartSignIn) == 1);
+  // A reason from Google replaces the default sentence.
+  Rendered why;
+  render(why, [&](toybox::Screen& screen) { gtasksui::buildSignIn(screen, "Google signed this reader out."); });
+  CHECK(drewText(why, "Google signed this reader out."));
+}
+
+void thePhonePageQrSitsAboveItsAddress() {
+  Rendered out;
+  fui::Rect qr{};
+  render(out, [&](toybox::Screen& screen) { qr = gtasksui::buildPhone(screen, "http://crossplay-1a2b.local/t"); });
+  // The address whole, never cut: a truncated one does not exist.
+  CHECK(drewText(out, "http://crossplay-1a2b.local/t"));
+  CHECK(drewText(out, "SAME WI-FI AS THE READER"));
+  CHECK(out.has(gtasksui::ActionCancelSignIn));
+  // Big enough for a phone at arm's length, and clear of the header band.
+  CHECK(qr.width >= 180 && qr.width == qr.height);
+  CHECK(qr.y >= 60);
+  fui::Rect cancel{};
+  CHECK(rectOf(out, gtasksui::ActionCancelSignIn, -1, cancel));
+  CHECK(qr.y + qr.height < cancel.y);
+}
+
+// The menu left of the title opens the switcher; only when there are lists.
+void theMenuSitsLeftOfTheTitleAndOpensTheLists() {
+  static const freeink::Icon& menu = icon_gtasks_menu_32;
+  gtasksui::Row one;
+  one.title = "Buy milk";
+  for (const bool withMenu : {true, false}) {
+    Rendered out;
+    gtasksui::ListModel model;
+    model.title = "GROCERIES";
+    model.rows = &one;
+    model.count = 1;
+    model.menuIcon = withMenu ? &menu : nullptr;
+    model.settingsIcon = &icon_go_settings_32;
+    render(out, [&](toybox::Screen& screen) { gtasksui::buildList(screen, model); });
+    CHECK(out.has(gtasksui::ActionOpenLists) == withMenu);
+    CHECK(drewText(out, "GROCERIES"));
+    if (withMenu) {
+      fui::Rect menuRect{};
+      fui::Rect gear{};
+      CHECK(rectOf(out, gtasksui::ActionOpenLists, -1, menuRect));
+      CHECK(rectOf(out, gtasksui::ActionSettings, -1, gear));
+      CHECK(menuRect.x < gear.x);
+      CHECK(menuRect.y < 80);
+    }
+  }
+}
+
+void everyListIsARowThatNamesItsIndex() {
+  gtasksui::ListChoice lists[3];
+  lists[0].title = "My Tasks";
+  lists[0].detail = "4 OPEN";
+  lists[1].title = "Groceries";
+  lists[1].detail = "2 OPEN / ASLEEP";
+  lists[2].title = "Work";
+  lists[2].detail = "0 OPEN";
+  gtasksui::ListsModel model;
+  model.lists = lists;
+  model.count = 3;
+  model.current = 1;
+  Rendered out;
+  render(out, [&](toybox::Screen& screen) { gtasksui::buildLists(screen, model); });
+  CHECK(!out.interactions.overflowed());
+  CHECK(countOf(out, gtasksui::ActionPickList) == 3);
+  CHECK(drewText(out, "Groceries"));
+  CHECK(drewText(out, "2 OPEN / ASLEEP"));
+  CHECK(out.has(gtasksui::ActionCloseLists));
+  for (int i = 0; i < 3; ++i) {
+    fui::Rect row{};
+    CHECK(rectOf(out, gtasksui::ActionPickList, i, row));
+    const fui::ActionEvent hit = out.tap(row.x + row.width / 2, row.y + row.height / 2);
+    CHECK(hit.action == gtasksui::ActionPickList && hit.value == i);
+  }
+}
+
+// A title that will not fit one line takes a second, and its row grows to
+// hold it; past two lines it is cut with an ellipsis rather than mid-word. Short
+// rows stay short, so a page of them holds more than a page of long ones.
+void aLongTitleWrapsToTwoLinesAndItsRowGrows() {
+  gtasksui::Row longRow;
+  longRow.title =
+      "Call the plumber about the boiler making that noise again before the weekend and ask about the radiators";
+  gtasksui::Row shortRow;
+  shortRow.title = "Milk";
+  gtasksui::ListModel model;
+  model.title = "MY TASKS";
+  gtasksui::Row rows[2] = {longRow, shortRow};
+  model.rows = rows;
+  model.count = 2;
+  // The task cut's line box, so two lines outgrow the minimum row.
+  Rendered out;
+  out.target.lineH = 29;
+  render(out, [&](toybox::Screen& screen) { gtasksui::buildList(screen, model); });
+  fui::Rect first{};
+  fui::Rect second{};
+  CHECK(rectOf(out, gtasksui::ActionToggle, 0, first));
+  CHECK(rectOf(out, gtasksui::ActionToggle, 1, second));
+  CHECK(first.height > second.height);
+  CHECK(second.y >= first.y + first.height);
+  CHECK(drewText(out, "Call the plumber"));
+  CHECK(drewText(out, "..."));
+  CHECK(drewText(out, "Milk"));
+
+  std::vector<gtasksui::Row> shorts(40, shortRow);
+  std::vector<gtasksui::Row> longs(40, longRow);
+  std::vector<int> starts;
+  Rendered probe;
+  probe.target.lineH = 29;
+  gtasksui::paginate(probe.target, device(), shorts.data(), 40, false, starts);
+  const int perShortPage = starts.size() > 1 ? starts[1] : 40;
+  gtasksui::paginate(probe.target, device(), longs.data(), 40, false, starts);
+  const int perLongPage = starts.size() > 1 ? starts[1] : 40;
+  CHECK(perShortPage > perLongPage);
+  CHECK(perLongPage >= 1);
+}
+
+// Asleep, the list is a picture: nothing to tap, and more rows than awake.
+void asleepTheListHasNoButtonsAndMoreRoom() {
+  std::vector<gtasksui::Row> all(40);
+  for (auto& r : all) r.title = "Water the plants";
+  std::vector<int> starts;
+  gtasksui::paginate(Rendered().target, device(), all.data(), 40, false, starts);
+  const int awake = starts.size() > 1 ? starts[1] : 0;
+  gtasksui::paginate(Rendered().target, device(), all.data(), 40, true, starts);
+  const int asleep = starts.size() > 1 ? starts[1] : 0;
+  CHECK(asleep > awake);
+  std::vector<gtasksui::Row> rows(static_cast<size_t>(asleep));
+  for (auto& r : rows) r.title = "Water the plants";
+  gtasksui::ListModel model;
+  model.title = "HOME";
+  model.status = "9 OPEN";
+  model.rows = rows.data();
+  model.count = asleep;
+  model.asleep = true;
+  model.settingsIcon = &icon_go_settings_32;
+  model.menuIcon = &icon_gtasks_menu_32;
+  Rendered out;
+  render(out, [&](toybox::Screen& screen) { gtasksui::buildList(screen, model); });
+  CHECK(!out.has(gtasksui::ActionRefresh));
+  CHECK(!out.has(gtasksui::ActionToggle));
+  CHECK(!out.has(gtasksui::ActionOpenLists));
+  CHECK(!out.has(gtasksui::ActionSettings));
+  CHECK(drewText(out, "HOME"));
+  CHECK(drewText(out, "9 OPEN"));
+}
+
+}  // namespace gtaskstest
+
 namespace wordletest {
 
 void buildGame(Rendered& out, const wordleui::GameModel& model, wordleui::KeyboardLayout& keys) {
@@ -14785,6 +15089,17 @@ void theMenuOffersTodayOnlyWhenThereIsOne() {
 }  // namespace wordletest
 
 int main() {
+  gtaskstest::aTapOnARowNamesTheTaskNotTheSlot();
+  gtaskstest::theArrowsAppearOnlyWhenThereIsSomewhereToGo();
+  gtaskstest::anEmptyListSaysSoAndStillRefreshes();
+  gtaskstest::settingsOffersSignOutOnlyWhenSignedIn();
+  gtaskstest::keepingTheAccountIsWhereTheThumbAlreadyIs();
+  gtaskstest::signingInStartsWithOneButton();
+  gtaskstest::thePhonePageQrSitsAboveItsAddress();
+  gtaskstest::theMenuSitsLeftOfTheTitleAndOpensTheLists();
+  gtaskstest::everyListIsARowThatNamesItsIndex();
+  gtaskstest::asleepTheListHasNoButtonsAndMoreRoom();
+  gtaskstest::aLongTitleWrapsToTwoLinesAndItsRowGrows();
   notestest::aNoteAsleepIsReadOnlyAndTaller();
   wordletest::everyKeyIsWhereItIsDrawn();
   wordletest::aFinishedGameShowsTheAnswerAndLetsGo();

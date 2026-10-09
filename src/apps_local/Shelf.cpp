@@ -21,6 +21,7 @@
 #include "dungeon/DungeonActivity.h"
 #include "forehead/ForeheadActivity.h"
 #include "go/GoActivity.h"
+#include "gtasks/GTasksActivity.h"
 #include "hackernews/HackerNewsActivity.h"
 #include "hearts/HeartsActivity.h"
 #include "hex/HexActivity.h"
@@ -91,6 +92,7 @@ constexpr shelf::Item kApps[] = {
     // Card #516. The icon is the Lucide list mark borrowed from Murdle while
     // the screens are being chosen; a Notes mark comes with the real app.
     {"NOTES", &icon_murdle_face_clues_32, &NotesActivity::create},
+    {"TASKS", &icon_gtasks_32, &GTasksActivity::create},
 };
 
 // The two rows Home grows, in reading order. Titles are Title Case because
