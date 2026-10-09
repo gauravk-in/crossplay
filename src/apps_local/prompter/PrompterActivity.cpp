@@ -326,9 +326,13 @@ std::string PrompterActivity::turnerStatus() const {
   const std::string name = settings_.turnerName.empty() ? settings_.turnerAddress : settings_.turnerName;
   if (turner_.scanning()) return "Looking for page turners. Put yours in pairing mode now, then tap it below.";
   switch (turner_.state()) {
-    case prompter::TurnerLink::State::Connected:
-      return "Connected to " + name + ". Press a key on it to test it." +
-             (lastTurn_.empty() ? std::string() : " Last key: " + lastTurn_ + ".");
+    case prompter::TurnerLink::State::Connected: {
+      const std::string unknown = turner_.unknownKey();
+      std::string out = "Connected to " + name + ". Press a key on it to test it.";
+      if (!lastTurn_.empty()) out += " Last key: " + lastTurn_ + ".";
+      if (!unknown.empty()) out += " It also sent a key Prompter does not know (" + unknown + ").";
+      return out;
+    }
     case prompter::TurnerLink::State::Connecting:
       return "Connecting to " + name + ". The first time, this is the pairing.";
     default:
