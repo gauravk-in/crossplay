@@ -3,6 +3,7 @@
 #include <ArduinoJson.h>
 #include <HalStorage.h>
 #include <Logging.h>
+#include <strings.h>
 
 #include <cctype>
 #include <cstdio>
@@ -393,7 +394,15 @@ int request(const Endpoint& endpoint, const char* method, const std::string& pat
       cmd += " -H '" + headers->send[i].name + ": " + headers->send[i].value + "'";
     }
   }
-  if (body) cmd += " -H 'Content-Type: application/json' --data-binary @'" + std::string(bodyPath) + "'";
+  // JSON unless the caller named its own type: Google's token endpoint wants a
+  // form, and curl would send both headers rather than let the second win.
+  bool typed = false;
+  if (headers != nullptr) {
+    for (int i = 0; i < headers->sendCount; ++i)
+      typed = typed || strcasecmp(headers->send[i].name.c_str(), "Content-Type") == 0;
+  }
+  if (body && !typed) cmd += " -H 'Content-Type: application/json'";
+  if (body) cmd += " --data-binary @'" + std::string(bodyPath) + "'";
   if (!body && std::strcmp(method, "POST") == 0) cmd += " --data ''";
   cmd += " '" + base(endpoint) + path + "'";
   FILE* pipe = popen(cmd.c_str(), "r");

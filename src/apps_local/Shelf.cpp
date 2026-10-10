@@ -20,7 +20,9 @@
 #include "connections/ConnectionsActivity.h"
 #include "dungeon/DungeonActivity.h"
 #include "forehead/ForeheadActivity.h"
+#include "gcal/GCalActivity.h"
 #include "go/GoActivity.h"
+#include "gtasks/GTasksActivity.h"
 #include "hackernews/HackerNewsActivity.h"
 #include "hearts/HeartsActivity.h"
 #include "hex/HexActivity.h"
@@ -30,23 +32,32 @@
 #include "knucklebones/KnucklebonesActivity.h"
 #include "minesweeper/MinesweeperActivity.h"
 #include "murdle/MurdleActivity.h"
-#include "notes/NotesActivity.h"
 #include "picross/PicrossActivity.h"
 #include "player/PlayerActivity.h"
+#include "pomodoro/PomodoroActivity.h"
+#include "pomodoro/PomodoroIcons.h"
+#include "prompter/PrompterActivity.h"
+#include "prompter/PrompterIcons.h"
 #include "seasalt/SeaSaltActivity.h"
 #include "solitaire/SolitaireActivity.h"
 #include "study/StudyActivity.h"
 #include "sudoku/SudokuActivity.h"
 #include "toybattle/ToyBattleActivity.h"
 #include "trivia/TriviaActivity.h"
+#include "trmnl/TrmnlActivity.h"
+#include "trmnl/TrmnlIcons.h"
 #include "ui/ToyboxIcons.h"
 #include "underhand/UnderhandActivity.h"
 #include "unicorns/UnicornActivity.h"
 #include "unicorns/UnicornArt.h"
-#include "wallpapers/WallpapersActivity.h"
+#include "wallet/WalletActivity.h"
+#include "wallet/WalletIcons.h"
 #include "wavelength/WavelengthActivity.h"
-#include "wikipedia/WikipediaActivity.h"
+#include "weather/WeatherActivity.h"
+#include "weather/WeatherUiIcons.h"
 #include "wordle/WordleActivity.h"
+#include "workouts/WorkoutsActivity.h"
+#include "workouts/WorkoutsIcons.h"
 #include "xkcd/XkcdActivity.h"
 #include "yahtzee/YahtzeeActivity.h"
 
@@ -86,15 +97,18 @@ constexpr shelf::Item kGames[] = {
 };
 constexpr shelf::Item kApps[] = {
     {"STUDY", &icon_study_32, &StudyActivity::create},
+    {"WORKOUTS", &icon_w_dumbbell_32, &WorkoutsActivity::create},
     {"HACKER NEWS", &icon_hackernews_32, &HackerNewsActivity::create},
     {"XKCD", &icon_xkcd_32, &XkcdActivity::create},
     {"INSTAPAPER", &icon_instapaper_32, &InstapaperActivity::create},
-    {"WALLPAPERS", &icon_wallpapers_32, &WallpapersActivity::create},
-    {"WIKIPEDIA", &icon_wikipedia_32, &WikipediaActivity::create},
+    {"CARDS", &icon_wallet_mark_32, &WalletActivity::create},
     {"CALCULATOR", &icon_calculator_32, &CalculatorActivity::create},
-    // Card #516. The icon is the Lucide list mark borrowed from Murdle while
-    // the screens are being chosen; a Notes mark comes with the real app.
-    {"NOTES", &icon_murdle_face_clues_32, &NotesActivity::create},
+    {"POMODORO", &icon_pomodoro_mark_32, &PomodoroActivity::create},
+    {"TASKS", &icon_gtasks_32, &GTasksActivity::create},
+    {"CALENDAR", &icon_gcal_32, &GCalActivity::create},
+    {"TRMNL", &icon_trmnl_32, &TrmnlActivity::create},
+    {"PROMPTER", &icon_prompter_mark_32, &PrompterActivity::create},
+    {"WEATHER", &icon_weather_32, &WeatherActivity::create},
 };
 
 // The two rows Home grows, in reading order. Titles are Title Case because

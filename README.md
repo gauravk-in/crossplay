@@ -26,7 +26,7 @@ devices with an 800x480 panel, capacitive touch and two physical buttons
 (three on the Sticky; the design uses the two shared buttons), and
 [CrossPoint](https://crosspointreader.com/) already makes them good at reading.
 CrossPlay is firmware that keeps all of that and adds the other things a screen
-that holds still is good at: **26 games and 8 apps**,
+that holds still is good at: **26 games and 13 apps**,
 spaced-repetition flashcards, comics, a read-later queue, and two devices that
 play together with nothing to set up.
 
@@ -85,10 +85,15 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Hacker News** | The front page in a reading serif, articles kept on the card.            |
 | **xkcd**        | The archive, packed for the card and drawn one to one.                   |
 | **Instapaper**  | Your read-later queue, synced both ways: reading position and archiving. |
-| **Wallpapers**  | Pick an image on the card as the sleep screen, one tap to set it.        |
-| **Wikipedia**   | Fifty thousand articles on the card, read like a book, no internet.      |
 | **Calculator**  | A calculator with keys the size of a thumb, and the sums you already did. |
-| **Notes**       | Lists you tick with one hand, kept as plain text files on the card.      |
+| **Pomodoro**    | A ring of minute wedges you tap to set, counting down in the middle.    |
+| **Tasks**       | Your Google Tasks list: tick here, synced on refresh or on the charger.  |
+| **Workouts**    | Schedules written on your phone, sets ticked off here, the week at a glance. |
+| **Calendar**    | Google Calendar's schedule, from today on; also the sleep screen.        |
+| **Cards**       | Loyalty cards, boarding passes and links as QR codes or barcodes, added from a phone screenshot. |
+| **TRMNL**       | A TRMNL dashboard screen: trmnl.app or your own server, set up from a phone. |
+| **Prompter**    | A paged teleprompter: scripts from a phone, turned by tap, key or timer. |
+| **Weather**     | Today, the next 24 hours and ten days, fetched once a day from Open-Meteo. |
 
 And the reader is still CrossPoint's reader: the EPUB engine, sync and the file
 browser are theirs and stay theirs.

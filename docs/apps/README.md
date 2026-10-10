@@ -19,6 +19,11 @@ upstream's and covers the reader, not these.
 | [`study.md`](study.md) | Anki decks on the reader: the deck, the scheduler, and what a review does. |
 | [`instapaper.md`](instapaper.md) | The read-later queue and how it syncs. |
 | [`trivia.md`](trivia.md) | The question app, and where the questions come from. |
+| [`workouts.md`](workouts.md) | Schedules written on a phone, sets ticked on the reader, and the week strip. |
+| [`cards.md`](cards.md) | QR codes and barcodes kept on the reader: the card files and the phone page that reads a screenshot. |
+| [`trmnl.md`](trmnl.md) | A TRMNL dashboard screen: the API it speaks, the settings, and what it does not do yet. |
+| [`prompter.md`](prompter.md) | The teleprompter: scripts from a phone, page turners, the page timer. |
+| [`weather.md`](weather.md) | Today, the next 24 hours and ten days from Open-Meteo, fetched once a day. |
 
 ## The rules a game implements
 
