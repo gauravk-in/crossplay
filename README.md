@@ -26,7 +26,7 @@ devices with an 800x480 panel, capacitive touch and two physical buttons
 (three on the Sticky; the design uses the two shared buttons), and
 [CrossPoint](https://crosspointreader.com/) already makes them good at reading.
 CrossPlay is firmware that keeps all of that and adds the other things a screen
-that holds still is good at: **25 games and 13 apps**,
+that holds still is good at: **26 games and 13 apps**,
 spaced-repetition flashcards, comics, a read-later queue, and two devices that
 play together with nothing to set up.
 
@@ -64,6 +64,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Yahtzee**      | Thirteen boxes, three rolls a turn, and the Joker rules in full.             |
 | **Knucklebones** | Cult of the Lamb's dice game. Matching dice multiply; yours destroy theirs.  |
 | **Minesweeper**  | Tap to dig, hold to flag, tap a finished number to chord its neighbours.     |
+| **Unicorns**     | Minesweeper for a five year old: unicorns hide under the squares, dots count. |
 | **Sudoku**       | Generated on the device and graded by the technique it needs, not the clues. |
 | **Picross**     | Fill the grid from the clues and a picture appears. Wrong fills lock in.     |
 | **Sea Salt**     | Sea Salt & Paper: collect duos, bet on STOP or LAST CHANCE.                  |

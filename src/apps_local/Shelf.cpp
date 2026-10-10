@@ -48,6 +48,8 @@
 #include "trmnl/TrmnlIcons.h"
 #include "ui/ToyboxIcons.h"
 #include "underhand/UnderhandActivity.h"
+#include "unicorns/UnicornActivity.h"
+#include "unicorns/UnicornArt.h"
 #include "wallet/WalletActivity.h"
 #include "wallet/WalletIcons.h"
 #include "wavelength/WavelengthActivity.h"
@@ -80,6 +82,8 @@ constexpr shelf::Item kGames[] = {
     {"YAHTZEE", &icon_yahtzee_32, &YahtzeeActivity::create},
     {"KNUCKLEBONES", &icon_knucklebones_32, &KnucklebonesActivity::create},
     {"MINESWEEPER", &icon_minesweeper_32, &MinesweeperActivity::create},
+    // Hand-drawn art: Lucide has no unicorn. See tools_local/unicorns/.
+    {"UNICORNS", &art_unicorn, &UnicornActivity::create},
     {"SUDOKU", &icon_sudoku_32, &SudokuActivity::create},
     {"PICROSS", &icon_picross_32, &PicrossActivity::create},
     {"TOY BATTLE", &icon_toybattle_32, &ToyBattleActivity::create},
