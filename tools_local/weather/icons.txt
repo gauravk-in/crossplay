@@ -1,0 +1,16 @@
+# Icons for the Weather app, generated into src/apps_local/weather/WeatherIcons.h
+# by tools_local/weather/gen_icons.sh. Format: alias = lucide-name.
+
+# The sky, one per WMO weather group (see weather::skyFor in WeatherCore.h).
+wx_sun          = sun
+wx_moon         = moon
+wx_cloud_sun    = cloud-sun
+wx_cloud_moon   = cloud-moon
+wx_cloud        = cloud
+wx_fog          = cloud-fog
+wx_drizzle      = cloud-drizzle
+wx_rain         = cloud-rain
+wx_shower_sun   = cloud-sun-rain
+wx_shower_moon  = cloud-moon-rain
+wx_snow         = cloud-snow
+wx_storm        = cloud-lightning
