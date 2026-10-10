@@ -1,0 +1,2 @@
+# Math Quiz's shelf mark. Regenerate with tools_local/mathquiz/gen_icons.sh.
+mathquiz = diff

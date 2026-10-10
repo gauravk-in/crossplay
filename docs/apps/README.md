@@ -24,6 +24,7 @@ upstream's and covers the reader, not these.
 | [`trmnl.md`](trmnl.md) | A TRMNL dashboard screen: the API it speaks, the settings, and what it does not do yet. |
 | [`prompter.md`](prompter.md) | The teleprompter: scripts from a phone, page turners, the page timer. |
 | [`weather.md`](weather.md) | Today, the next 24 hours and ten days from Open-Meteo, fetched once a day. |
+| [`mathquiz.md`](mathquiz.md) | Sums by school class, and the score and speed charts. |
 
 ## The rules a game implements
 
