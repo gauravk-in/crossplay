@@ -103,7 +103,7 @@ grep -rl "Button::Up\|Button::Down" src/apps_local/*/ | cut -d/ -f3 | sort -u
 
 | Button       | Apps that read it | Exists on X4 Pro |
 | ------------ | ----------------- | ---------------- |
-| Back         | 41                | as a swipe       |
+| Back         | 42                | as a swipe       |
 | Confirm      | 3                 | **no**           |
 | Left / Right | 2                 | **no**           |
 | Up / Down    | 20                | **yes**          |

@@ -30,6 +30,8 @@
 #include "instapaper/InstapaperActivity.h"
 #include "jaipur/JaipurActivity.h"
 #include "knucklebones/KnucklebonesActivity.h"
+#include "mathquiz/MathQuizActivity.h"
+#include "mathquiz/MathQuizIcons.h"
 #include "minesweeper/MinesweeperActivity.h"
 #include "murdle/MurdleActivity.h"
 #include "picross/PicrossActivity.h"
@@ -105,6 +107,7 @@ constexpr shelf::Item kApps[] = {
     {"TRMNL", &icon_trmnl_32, &TrmnlActivity::create},
     {"PROMPTER", &icon_prompter_mark_32, &PrompterActivity::create},
     {"WEATHER", &icon_weather_32, &WeatherActivity::create},
+    {"MATH QUIZ", &icon_mathquiz_32, &MathQuizActivity::create},
 };
 
 // The two rows Home grows, in reading order. Titles are Title Case because
