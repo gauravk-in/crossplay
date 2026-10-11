@@ -12,8 +12,12 @@
 #include "ShelfFolderActivity.h"
 #include "ShelfHidden.h"
 #include "ShelfState.h"
+// Set per env in platformio.ini: the runtime needs PSRAM and ~350 KB of flash.
+#if defined(CROSSPLAY_APPSTORE) || defined(SIMULATOR)
+#define CROSSPLAY_HAS_APPSTORE 1
 #include "appstore/AppStoreActivity.h"
 #include "appstore/AppStoreIcons.h"
+#endif
 #include "battleship/BattleshipActivity.h"
 #include "calculator/CalculatorActivity.h"
 #include "checkers/CheckersActivity.h"
@@ -116,7 +120,9 @@ constexpr shelf::Item kApps[] = {
     {"PROMPTER", &icon_prompter_mark_32, &PrompterActivity::create},
     {"WEATHER", &icon_weather_32, &WeatherActivity::create},
     {"MATH QUIZ", &icon_mathquiz_32, &MathQuizActivity::create},
+#ifdef CROSSPLAY_HAS_APPSTORE
     {"APP STORE", &icon_appstore_32, &AppStoreActivity::create},
+#endif
 };
 
 // The two rows Home grows, in reading order. Titles are Title Case because

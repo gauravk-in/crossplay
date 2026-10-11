@@ -5,7 +5,9 @@ store lets a device download apps instead, so an app written for one CrossPlay
 build runs on any other build that speaks the same **app API**
 ([app-api/README.md](app-api/README.md)).
 
-Status: a working prototype. Math Quiz and Memory are packaged as downloadable
+Status: a working prototype, built into the X4 Pro firmware only
+(`-DCROSSPLAY_APPSTORE=1` in `platformio.ini`; the simulator always has it). The
+runtime needs PSRAM and about 350 KB of flash, which the other envs lack. Math Quiz and Memory are packaged as downloadable
 apps for trial; the built-in versions stay in the firmware.
 
 ## The pieces
