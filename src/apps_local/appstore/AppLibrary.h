@@ -48,8 +48,8 @@ using Progress = bool (*)(void* ctx, uint32_t done, uint32_t total);
 
 // Installs or updates to `entry.version`. On failure `error` is a sentence for
 // the person holding the device, and whatever was installed before is untouched.
-bool install(const CatalogEntry& entry, const std::string& server, bool hasTouch, bool hasButtons,
-             Progress progress, void* ctx, std::string& error);
+bool install(const CatalogEntry& entry, const std::string& server, bool hasTouch, bool hasButtons, Progress progress,
+             void* ctx, std::string& error);
 
 // Removes the app, and its data unless `keepData`.
 bool uninstall(const std::string& id, bool keepData, std::string& error);

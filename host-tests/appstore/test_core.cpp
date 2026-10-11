@@ -105,7 +105,6 @@ void manifests() {
   const std::string huge = "{\"id\":\"org.a.b\",\"name\":\"X\",\"version\":\"1.0.0\",\"api\":\"1.0\",\"files\":[" +
                            std::string("{\"name\":\"app.wasm\",\"size\":9999999,\"sha256\":\"") + kHash + "\"}]}";
   check(!parseManifest(huge, m, error), "a package over the limit is refused");
-
 }
 
 void catalog() {

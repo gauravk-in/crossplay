@@ -192,7 +192,9 @@ fui::TextStyle styleOf(const int32_t s) {
   return style;
 }
 
-int16_t clamp16(const int32_t v) { return static_cast<int16_t>(std::max<int32_t>(-32768, std::min<int32_t>(32767, v))); }
+int16_t clamp16(const int32_t v) {
+  return static_cast<int16_t>(std::max<int32_t>(-32768, std::min<int32_t>(32767, v)));
+}
 uint8_t clamp8(const int32_t v) { return static_cast<uint8_t>(std::max<int32_t>(0, std::min<int32_t>(255, v))); }
 
 fui::Rect rectOf(const int32_t x, const int32_t y, const int32_t w, const int32_t h) {
@@ -247,7 +249,7 @@ struct WasmApp::Impl {
   bool timerSet = false;
   int32_t timerMs = 0;
 
-  std::string text;          // NUL-terminated copy of the last string drawn or measured
+  std::string text;           // NUL-terminated copy of the last string drawn or measured
   uint8_t* bounce = nullptr;  // SD transfers go through internal RAM, never straight into PSRAM
 
   // The call in flight.
@@ -549,8 +551,8 @@ bool inMemory(IM3Runtime runtime, const uint32_t offset, const int64_t len) {
   return static_cast<uint64_t>(offset) + static_cast<uint64_t>(len) <= m3_GetMemorySize(runtime);
 }
 
-#define SPAN(ptr, offset, len)                                                                \
-  if (!inMemory(runtime, (offset), (len))) m3ApiTrap(m3Err_trapOutOfBoundsMemoryAccess);      \
+#define SPAN(ptr, offset, len)                                                           \
+  if (!inMemory(runtime, (offset), (len))) m3ApiTrap(m3Err_trapOutOfBoundsMemoryAccess); \
   uint8_t* ptr = static_cast<uint8_t*>(_mem) + (offset);
 
 // --- System
@@ -1066,7 +1068,8 @@ const WasmApp::ImportSpec* WasmApp::imports(int& count) {
   return specs;
 }
 
-WasmApp::WasmApp(GfxRenderer& renderer, const Device device) : impl_(new (std::nothrow) Impl(*this, renderer, device)) {}
+WasmApp::WasmApp(GfxRenderer& renderer, const Device device)
+    : impl_(new (std::nothrow) Impl(*this, renderer, device)) {}
 
 WasmApp::~WasmApp() = default;
 

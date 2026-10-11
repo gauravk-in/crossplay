@@ -102,7 +102,8 @@ int buildList(toybox::Screen& screen, const ListModel& model) {
     } else {
       screen.target().stroke(tile, kInk, 2, 8);
     }
-    label(screen, tile, tabs[t], toybox::kSmallFont, fui::TextAlign::Center, on ? fui::Color::White : fui::Color::Black);
+    label(screen, tile, tabs[t], toybox::kSmallFont, fui::TextAlign::Center,
+          on ? fui::Color::White : fui::Color::Black);
     screen.frame().hit(tile, ActionTab, static_cast<int16_t>(t));
   }
 

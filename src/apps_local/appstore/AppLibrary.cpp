@@ -220,8 +220,8 @@ bool install(const CatalogEntry& entry, const std::string& server, const bool ha
     const auto err = HttpDownloader::downloadToFile(
         urls[i], dest,
         [&pump](const size_t done, const size_t) {
-          if (pump.progress != nullptr && !pump.progress(pump.ctx, static_cast<uint32_t>(pump.before + done),
-                                                         static_cast<uint32_t>(pump.total))) {
+          if (pump.progress != nullptr &&
+              !pump.progress(pump.ctx, static_cast<uint32_t>(pump.before + done), static_cast<uint32_t>(pump.total))) {
             pump.cancel = true;
           }
         },

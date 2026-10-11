@@ -77,8 +77,8 @@ bool validFileName(const char* name, const size_t len) {
   if (name == nullptr || len == 0 || len > 32 || name[0] == '.') return false;
   for (size_t i = 0; i < len; ++i) {
     const char c = name[i];
-    const bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' ||
-                    c == '_' || c == '-';
+    const bool ok =
+        (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-';
     if (!ok) return false;
   }
   return true;
@@ -208,8 +208,8 @@ class JsonParser {
   bool number(double& out) {
     const size_t start = i_;
     if (i_ < s_.size() && s_[i_] == '-') ++i_;
-    while (i_ < s_.size() && ((s_[i_] >= '0' && s_[i_] <= '9') || s_[i_] == '.' || s_[i_] == 'e' ||
-                              s_[i_] == 'E' || s_[i_] == '+' || s_[i_] == '-')) {
+    while (i_ < s_.size() && ((s_[i_] >= '0' && s_[i_] <= '9') || s_[i_] == '.' || s_[i_] == 'e' || s_[i_] == 'E' ||
+                              s_[i_] == '+' || s_[i_] == '-')) {
       ++i_;
     }
     if (i_ == start) return false;
@@ -309,8 +309,7 @@ bool isHex64(const std::string& s) {
   return true;
 }
 
-bool parseFiles(const Json* files, std::vector<PackageFile>& out, std::vector<std::string>* urls,
-                std::string& error) {
+bool parseFiles(const Json* files, std::vector<PackageFile>& out, std::vector<std::string>* urls, std::string& error) {
   if (files == nullptr || files->type != Json::Type::Array || files->items.empty()) {
     error = "lists no files";
     return false;
@@ -485,7 +484,8 @@ bool parseCatalog(const std::string& text, std::vector<CatalogEntry>& out, std::
     if (!parseAppVersion(e.latest, v)) continue;
     if (e.compatible) {
       std::string why;
-      if (!parseAppVersion(e.version, v) || e.manifestUrl.empty() || !parseFiles(a.get("files"), e.files, &e.fileUrls, why)) {
+      if (!parseAppVersion(e.version, v) || e.manifestUrl.empty() ||
+          !parseFiles(a.get("files"), e.files, &e.fileUrls, why)) {
         continue;
       }
       // The server's answer is advice; the device checks the rule itself.
@@ -554,8 +554,8 @@ std::string resolveUrl(const std::string& server, const std::string& ref) {
 }
 
 std::string catalogUrl(const std::string& server, const bool hasTouch, const bool hasButtons, const char* firmware) {
-  std::string url = trimSlash(server) + "/v1/apps?api=" + firmwareApi().str() + "&from=" +
-                    firmwareCompatibleFrom().str() + "&touch=" + (hasTouch ? "1" : "0") +
+  std::string url = trimSlash(server) + "/v1/apps?api=" + firmwareApi().str() +
+                    "&from=" + firmwareCompatibleFrom().str() + "&touch=" + (hasTouch ? "1" : "0") +
                     "&buttons=" + (hasButtons ? "1" : "0");
   if (firmware != nullptr && *firmware != '\0') {
     url += "&firmware=";

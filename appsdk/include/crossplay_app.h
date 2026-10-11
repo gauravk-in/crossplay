@@ -92,7 +92,7 @@ enum {
 // Text style, packed into one int. Bits:
 //   0-1 align (0 left, 1 centre, 2 right)   2-4 colour   5-12 max lines (0 = 1)
 //   13 bold   14 inverted   15-16 rotation (0 none, 1 cw, 2 180, 3 ccw)
-#define CP_TEXT_STYLE(align, color, maxLines, bold, inverted, rotation)                                          \
+#define CP_TEXT_STYLE(align, color, maxLines, bold, inverted, rotation)                                     \
   ((int32_t)(((align) & 3) | (((color) & 7) << 2) | (((maxLines) & 0xFF) << 5) | (((bold) ? 1 : 0) << 13) | \
              (((inverted) ? 1 : 0) << 14) | (((rotation) & 3) << 15)))
 
@@ -146,12 +146,12 @@ enum {
 // Filled by cp_device_info. Fields are append-only; the firmware writes at most
 // `size` bytes, so an app built against an older struct still works.
 typedef struct {
-  int32_t size;          // the app sets this to sizeof(cp_device_info_t)
-  int32_t width;         // logical pixels, current orientation
+  int32_t size;   // the app sets this to sizeof(cp_device_info_t)
+  int32_t width;  // logical pixels, current orientation
   int32_t height;
-  int32_t hasTouch;      // 0 or 1
-  int32_t hasButtons;    // 0 or 1
-  int32_t safeTop;       // insets the bezel hides
+  int32_t hasTouch;    // 0 or 1
+  int32_t hasButtons;  // 0 or 1
+  int32_t safeTop;     // insets the bezel hides
   int32_t safeRight;
   int32_t safeBottom;
   int32_t safeLeft;
@@ -212,14 +212,17 @@ CP_IMPORT(file_remove) int32_t cp_file_remove(const char* name, int32_t nameLen)
 // logical pixels in the current orientation. These mirror FreeInkUI's
 // DrawTarget, so the SDK's FreeInkUI components run on top of them unchanged.
 
-CP_IMPORT(measure_text) void cp_measure_text(int32_t face, const char* text, int32_t len, int32_t style, cp_size_t* out);
+CP_IMPORT(measure_text)
+void cp_measure_text(int32_t face, const char* text, int32_t len, int32_t style, cp_size_t* out);
 CP_IMPORT(line_height) int32_t cp_line_height(int32_t face);
 // The visible ink of `text` relative to its line box.
 CP_IMPORT(ink_bounds) void cp_ink_bounds(int32_t face, const char* text, int32_t len, int32_t style, cp_rect_t* out);
 // corners: bit 0 top-left, 1 top-right, 2 bottom-left, 3 bottom-right.
-CP_IMPORT(fill) void cp_fill(int32_t x, int32_t y, int32_t w, int32_t h, int32_t paint, int32_t radius, int32_t corners);
+CP_IMPORT(fill)
+void cp_fill(int32_t x, int32_t y, int32_t w, int32_t h, int32_t paint, int32_t radius, int32_t corners);
 CP_IMPORT(stroke)
-void cp_stroke(int32_t x, int32_t y, int32_t w, int32_t h, int32_t paint, int32_t width, int32_t radius, int32_t corners);
+void cp_stroke(int32_t x, int32_t y, int32_t w, int32_t h, int32_t paint, int32_t width, int32_t radius,
+               int32_t corners);
 CP_IMPORT(line) void cp_line(int32_t x0, int32_t y0, int32_t x1, int32_t y1, int32_t width, int32_t paint);
 CP_IMPORT(triangle)
 void cp_triangle(int32_t ax, int32_t ay, int32_t bx, int32_t by, int32_t cx, int32_t cy, int32_t paint);

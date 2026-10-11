@@ -155,8 +155,9 @@ void AppStoreActivity::openCatalog() {
     return;
   }
   if (server_.empty()) {
-    showNotice("NO STORE SET", "This device does not know which store to use yet. Type the address of the store server.",
-               "SET ADDRESS", NoticeAction::SetAddress);
+    showNotice("NO STORE SET",
+               "This device does not know which store to use yet. Type the address of the store server.", "SET ADDRESS",
+               NoticeAction::SetAddress);
     return;
   }
   needNetwork(Work::FetchCatalog);
@@ -252,8 +253,10 @@ void AppStoreActivity::fetchCatalog() {
     const int status = HttpDownloader::lastStatus();
     char message[200];
     if (status == 0) {
-      std::snprintf(message, sizeof(message), "Could not reach the store at %s. Is it running, and is this device on "
-                                              "the same network?", server_.c_str());
+      std::snprintf(message, sizeof(message),
+                    "Could not reach the store at %s. Is it running, and is this device on "
+                    "the same network?",
+                    server_.c_str());
     } else {
       std::snprintf(message, sizeof(message), "The store answered with an error (HTTP %d).", status);
     }

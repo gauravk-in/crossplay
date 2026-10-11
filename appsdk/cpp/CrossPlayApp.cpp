@@ -20,8 +20,8 @@ int32_t paintOf(const fui::Paint& paint) {
 }
 
 int32_t styleOf(const fui::TextStyle& style) {
-  return CP_TEXT_STYLE(static_cast<int32_t>(style.align), static_cast<int32_t>(style.color), style.maxLines,
-                       style.bold, style.inverted, static_cast<int32_t>(style.rotation));
+  return CP_TEXT_STYLE(static_cast<int32_t>(style.align), static_cast<int32_t>(style.color), style.maxLines, style.bold,
+                       style.inverted, static_cast<int32_t>(style.rotation));
 }
 
 int32_t lengthOf(const char* text) { return text == nullptr ? 0 : static_cast<int32_t>(std::strlen(text)); }

@@ -15,10 +15,10 @@ namespace appstoreui {
 namespace fui = freeink::ui;
 
 enum : fui::ActionId {
-  ActionTab = 1,     // value: 0 installed, 1 get apps
-  ActionRow = 2,     // value: index into the model's rows
-  ActionOlder = 3,   // previous page
-  ActionNewer = 4,   // next page
+  ActionTab = 1,    // value: 0 installed, 1 get apps
+  ActionRow = 2,    // value: index into the model's rows
+  ActionOlder = 3,  // previous page
+  ActionNewer = 4,  // next page
   ActionPrimary = 5,
   ActionSecondary = 6,
   ActionBack = 7,
