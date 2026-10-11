@@ -1,0 +1,4 @@
+# The shelf mark for MEMORY. Kept beside the app rather than in
+# tools_local/toybox/icons.txt, which cannot be regenerated as a whole (see the
+# warning at its top), the way Math Quiz keeps its own.
+memory = brain

@@ -28,6 +28,8 @@
 #include "instapaper/InstapaperActivity.h"
 #include "jaipur/JaipurActivity.h"
 #include "knucklebones/KnucklebonesActivity.h"
+#include "memory/MemoryActivity.h"
+#include "memory/MemoryIcons.h"
 #include "minesweeper/MinesweeperActivity.h"
 #include "murdle/MurdleActivity.h"
 #include "notes/NotesActivity.h"
@@ -79,6 +81,7 @@ constexpr shelf::Item kGames[] = {
     {"HEX", &icon_hex_32, &HexActivity::create},
     {"UNDERHAND", &icon_underhand_32, &UnderhandActivity::create},
     {"WORDLE", &icon_wordle_32, &WordleActivity::create},
+    {"MEMORY", &icon_memory_32, &MemoryActivity::create},
 };
 constexpr shelf::Item kApps[] = {
     {"STUDY", &icon_study_32, &StudyActivity::create},
