@@ -355,26 +355,36 @@ void buildMenu(toybox::Screen& screen, const MenuModel& model) {
     screen.frame().hit(tile, ActionSize, static_cast<int16_t>(s));
   }
 
+  // The rows in screen order; each carries its MenuRow as the action value,
+  // so leaving one out does not renumber the others.
   fui::ListItem rows[static_cast<int>(MenuRow::Count)] = {};
-  rows[static_cast<int>(MenuRow::Solo)].label = "PLAY ALONE";
-  rows[static_cast<int>(MenuRow::Pass)].label = "PASS AND PLAY";
-  rows[static_cast<int>(MenuRow::Nearby)].label = "PLAY NEARBY";
-  rows[static_cast<int>(MenuRow::Nearby)].subtitle = model.nearbyName;
-  rows[static_cast<int>(MenuRow::HowTo)].label = "HOW IT SCORES";
-  for (int i = 0; i < static_cast<int>(MenuRow::Count); ++i) rows[i].actionValue = static_cast<int16_t>(i);
+  int count = 0;
+  int nearbyIndex = -1;
+  const auto add = [&](const MenuRow row, const char* text) {
+    rows[count].label = text;
+    rows[count].actionValue = static_cast<int16_t>(row);
+    ++count;
+  };
+  add(MenuRow::Solo, "PLAY ALONE");
+  add(MenuRow::Pass, "PASS AND PLAY");
+  if (model.nearby) {
+    nearbyIndex = count;
+    add(MenuRow::Nearby, "PLAY NEARBY");
+    rows[nearbyIndex].subtitle = model.nearbyName;
+  }
+  add(MenuRow::HowTo, "HOW IT SCORES");
 
   fui::ListProps list;
   list.items = rows;
-  list.count = static_cast<uint16_t>(MenuRow::Count);
+  list.count = static_cast<uint16_t>(count);
   list.selectedIndex = 0;
   list.action = ActionMenuRow;
-  const int count = static_cast<int>(MenuRow::Count);
   const int16_t listHeight =
       static_cast<int16_t>(count * toybox::kRowHeight + (count - 1) * toybox::kGutter / 2 + toybox::kGutter);
   const fui::Rect listBand =
       fui::makeRect(content.x, static_cast<int16_t>(content.bottom() - listHeight), content.width, listHeight);
   screen.list(list, listHeight, fui::LayoutAnchor::Bottom);
-  toybox::iconAtRowRight(screen, listBand, static_cast<int>(MenuRow::Nearby), 0, linkui::nearbyMark(), false);
+  if (nearbyIndex >= 0) toybox::iconAtRowRight(screen, listBand, nearbyIndex, 0, linkui::nearbyMark(), false);
 
   const int chartTop = content.y + kTileH + 28;
   const fui::Rect chartBox = rect(content.x, chartTop, content.width, listBand.y - chartTop - 24);

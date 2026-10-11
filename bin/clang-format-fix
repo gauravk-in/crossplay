@@ -63,6 +63,8 @@ fi
 # found by diff. The fork-written files in that directory (MichiBridge, the shim)
 # are excluded with it deliberately: half a directory in a different brace style
 # reads as an accident.
+# lib/wasm3/ is vendored wasm3 v0.9.0 in its own style; its fork changes are
+# marked FORK CHANGE in comments, and m3_fork.c sits with it to match.
 # Keep the no-match case non-fatal: grep returns 1 when no files match,
 # which is expected when there are no modified C/C++ files.
 set +o pipefail
@@ -75,8 +77,9 @@ git ls-files  --exclude-standard ${GIT_LS_FILES_FLAGS} \
     | grep -v -E '^lib/decNumber/third_party/' \
     | grep -v -E '^lib/zstd/' \
     | grep -v -E '^src/apps_local/go/michi/' \
+    | grep -v -E '^lib/wasm3/' \
     | xargs -r "${CLANG_FORMAT_BIN}" -style=file "${CLANG_FORMAT_ACTION[@]}"
-CLANG_FORMAT_STATUS=${PIPESTATUS[7]}
+CLANG_FORMAT_STATUS=${PIPESTATUS[8]}
 # Restore strict pipeline failure handling for the rest of the script.
 set -o pipefail
 

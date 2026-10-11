@@ -1,0 +1,140 @@
+{
+  "_comment": "The record of every app API version and every break. Read by the store server (to explain why an app does not run), by appsdk/tools/cpapp.py (to check an app's imports against the API it claims) and by host-tests/appstore/check_api.py (which fails when this, the SDK header and the firmware's import table disagree). Edit it with every API change; see docs/app-api/README.md.",
+  "current": "1.0",
+  "compatibleFrom": "1.0",
+  "versions": [
+    {
+      "version": "1.0",
+      "date": "2026-10-11",
+      "compatibleFrom": "1.0",
+      "breaking": false,
+      "notes": "The first app API. Drawing mirrors FreeInkUI's DrawTarget (fill, stroke, line, triangle, text, bitmap, clip, text measurement) with fonts chosen by role; input arrives as events (back, tap, button, swipe, timer, resume, shown); each app gets a private folder of small files with a quota; plus the clock, a random source and a log. No network, radio or sensors.",
+      "added": [
+        "api_version",
+        "device_info",
+        "log",
+        "now_ms",
+        "unix_time",
+        "utc_offset_minutes",
+        "random",
+        "request_render",
+        "set_timer",
+        "exit",
+        "file_read",
+        "file_size",
+        "file_write",
+        "file_remove",
+        "measure_text",
+        "line_height",
+        "ink_bounds",
+        "fill",
+        "stroke",
+        "line",
+        "triangle",
+        "text",
+        "bitmap",
+        "set_clip"
+      ],
+      "changed": [],
+      "removed": []
+    }
+  ],
+  "functions": {
+    "api_version": {
+      "signature": "i()",
+      "since": "1.0"
+    },
+    "device_info": {
+      "signature": "v(i)",
+      "since": "1.0"
+    },
+    "log": {
+      "signature": "v(iii)",
+      "since": "1.0"
+    },
+    "now_ms": {
+      "signature": "I()",
+      "since": "1.0"
+    },
+    "unix_time": {
+      "signature": "I()",
+      "since": "1.0"
+    },
+    "utc_offset_minutes": {
+      "signature": "i()",
+      "since": "1.0"
+    },
+    "random": {
+      "signature": "i()",
+      "since": "1.0"
+    },
+    "request_render": {
+      "signature": "v(i)",
+      "since": "1.0"
+    },
+    "set_timer": {
+      "signature": "v(i)",
+      "since": "1.0"
+    },
+    "exit": {
+      "signature": "v()",
+      "since": "1.0"
+    },
+    "file_read": {
+      "signature": "i(iiii)",
+      "since": "1.0"
+    },
+    "file_size": {
+      "signature": "i(ii)",
+      "since": "1.0"
+    },
+    "file_write": {
+      "signature": "i(iiii)",
+      "since": "1.0"
+    },
+    "file_remove": {
+      "signature": "i(ii)",
+      "since": "1.0"
+    },
+    "measure_text": {
+      "signature": "v(iiiii)",
+      "since": "1.0"
+    },
+    "line_height": {
+      "signature": "i(i)",
+      "since": "1.0"
+    },
+    "ink_bounds": {
+      "signature": "v(iiiii)",
+      "since": "1.0"
+    },
+    "fill": {
+      "signature": "v(iiiiiii)",
+      "since": "1.0"
+    },
+    "stroke": {
+      "signature": "v(iiiiiiii)",
+      "since": "1.0"
+    },
+    "line": {
+      "signature": "v(iiiiii)",
+      "since": "1.0"
+    },
+    "triangle": {
+      "signature": "v(iiiiiii)",
+      "since": "1.0"
+    },
+    "text": {
+      "signature": "v(iiiiiiii)",
+      "since": "1.0"
+    },
+    "bitmap": {
+      "signature": "v(iiiiiiiiii)",
+      "since": "1.0"
+    },
+    "set_clip": {
+      "signature": "i(iiii)",
+      "since": "1.0"
+    }
+  }
+}

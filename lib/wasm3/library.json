@@ -1,0 +1,23 @@
+{
+  "name": "wasm3",
+  "version": "0.9.0",
+  "description": "Wasm3 WebAssembly interpreter, vendored from github.com/wasm3/wasm3 v0.9.0 (0cd3832). Runs downloadable apps; see docs/app-store.md.",
+  "license": "MIT",
+  "frameworks": "*",
+  "platforms": "*",
+  "build": {
+    "srcDir": "src",
+    "includeDir": "src",
+    "flags": [
+      "-O2",
+      "-Wno-unused-function",
+      "-Wno-unused-variable",
+      "-Wno-unused-but-set-variable",
+      "-Dd_m3HostAllocator=1",
+      "-Dd_m3HasFloat=1",
+      "-Dd_m3VerboseErrorMessages=1",
+      "-Dd_m3MaxFunctionStackHeight=4000",
+      "-Dd_m3MaxNativeStack=28672"
+    ]
+  }
+}

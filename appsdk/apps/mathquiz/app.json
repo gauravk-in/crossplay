@@ -1,0 +1,14 @@
+{
+  "id": "org.crossplay.mathquiz",
+  "name": "Math Quiz",
+  "version": "1.0.0",
+  "summary": "Arithmetic practice for school kids, with charts of how today went.",
+  "author": "CrossPlay",
+  "category": "apps",
+  "requires": ["touch"],
+  "memoryKB": 1024,
+  "dataQuotaKB": 64,
+  "build": {
+    "sources": ["src/apps_local/mathquiz/MathQuizCore.cpp", "src/apps_local/mathquiz/MathQuizScreens.cpp"]
+  }
+}
