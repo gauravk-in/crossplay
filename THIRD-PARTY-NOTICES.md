@@ -35,6 +35,11 @@ rasterised from them into `src/apps_local/chess/ChessPieces.h` at authoring
 time. Full text and the source SVGs at `assets_local/pieces/celtic/`, with the
 choice documented in `docs/design-language.md`.
 
+**Lichess puzzle database**, CC0, from
+[database.lichess.org](https://database.lichess.org/#puzzles). Checkmate's
+puzzles are a selection of it in `src/apps_local/chesspuz/ChessPuzzleData.h`.
+CC0 asks for nothing; the app credits Lichess on its menu anyway.
+
 **michi-c2**, MIT, Copyright (c) Denis Blumstein, from
 [db3108/michi-c2](https://github.com/db3108/michi-c2), a C recoding of Petr
 Baudis's [michi](https://github.com/pasky/michi). Go's opponent is this engine;
