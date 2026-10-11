@@ -12,6 +12,8 @@
 #include "ShelfFolderActivity.h"
 #include "ShelfHidden.h"
 #include "ShelfState.h"
+#include "appstore/AppStoreActivity.h"
+#include "appstore/AppStoreIcons.h"
 #include "battleship/BattleshipActivity.h"
 #include "calculator/CalculatorActivity.h"
 #include "checkers/CheckersActivity.h"
@@ -114,6 +116,7 @@ constexpr shelf::Item kApps[] = {
     {"PROMPTER", &icon_prompter_mark_32, &PrompterActivity::create},
     {"WEATHER", &icon_weather_32, &WeatherActivity::create},
     {"MATH QUIZ", &icon_mathquiz_32, &MathQuizActivity::create},
+    {"APP STORE", &icon_appstore_32, &AppStoreActivity::create},
 };
 
 // The two rows Home grows, in reading order. Titles are Title Case because

@@ -1,0 +1,14 @@
+{
+  "id": "org.crossplay.memory",
+  "name": "Memory",
+  "version": "1.0.0",
+  "summary": "Turn two cards at a time and find the pairs. Charts how much you remembered.",
+  "author": "CrossPlay",
+  "category": "games",
+  "requires": ["touch"],
+  "memoryKB": 1024,
+  "dataQuotaKB": 64,
+  "build": {
+    "sources": ["src/apps_local/memory/MemoryCore.cpp", "src/apps_local/memory/MemoryScreens.cpp"]
+  }
+}

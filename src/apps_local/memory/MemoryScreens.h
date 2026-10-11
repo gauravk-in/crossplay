@@ -48,6 +48,8 @@ struct MenuModel {
   int size = 0;
   const memory::Window* window = nullptr;  // null when the clock is not set
   const char* nearbyName = nullptr;
+  // False hides PLAY NEARBY, for a build with no radio (the downloadable app).
+  bool nearby = true;
 };
 
 struct BoardModel {
