@@ -1,0 +1,4 @@
+# Checkmate's shelf mark. Regenerate with tools_local/chesspuz/gen_icons.sh.
+# The knight, because Chess already owns the crown and a knight is the piece
+# people picture for a chess problem.
+chesspuz = chess-knight

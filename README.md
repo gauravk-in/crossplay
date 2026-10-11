@@ -26,7 +26,7 @@ devices with an 800x480 panel, capacitive touch and two physical buttons
 (three on the Sticky; the design uses the two shared buttons), and
 [CrossPoint](https://crosspointreader.com/) already makes them good at reading.
 CrossPlay is firmware that keeps all of that and adds the other things a screen
-that holds still is good at: **25 games and 14 apps**,
+that holds still is good at: **26 games and 14 apps**,
 spaced-repetition flashcards, comics, a read-later queue, and two devices that
 play together with nothing to set up.
 
@@ -51,6 +51,7 @@ the import lands a real pack instead of failing on an unreachable host.
 |                  |                                                                              |
 | ---------------- | ---------------------------------------------------------------------------- |
 | **Chess**        | A full engine on the device, or a board between two of them.                 |
+| **Checkmate**    | Lichess mate-in-one-to-three puzzles, with a daily no-hint score charted.    |
 | **Battleship**   | Lay out a fleet, then hunt someone else's.                                   |
 | **Connections**  | The daily word grid, with an archive of past boards.                         |
 | **Solitaire**    | Klondike, turned sideways because that is the shape of a tableau.            |

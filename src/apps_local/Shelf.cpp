@@ -16,6 +16,8 @@
 #include "calculator/CalculatorActivity.h"
 #include "checkers/CheckersActivity.h"
 #include "chess/ChessActivity.h"
+#include "chesspuz/ChessPuzzleActivity.h"
+#include "chesspuz/ChessPuzzleIcons.h"
 #include "connectfour/ConnectFourActivity.h"
 #include "connections/ConnectionsActivity.h"
 #include "dungeon/DungeonActivity.h"
@@ -68,6 +70,7 @@ namespace {
 // shape, so a row is scannable before the label is read.
 constexpr shelf::Item kGames[] = {
     {"CHESS", &icon_chess_32, &ChessActivity::create},
+    {"CHECKMATE", &icon_chesspuz_32, &ChessPuzzleActivity::create},
     {"BATTLESHIP", &icon_battleship_32, &BattleshipActivity::create},
     {"CONNECTIONS", &icon_connections_32, &ConnectionsActivity::create},
     {"SOLITAIRE", &icon_solitaire_32, &SolitaireActivity::create},

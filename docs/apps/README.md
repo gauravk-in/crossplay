@@ -25,6 +25,7 @@ upstream's and covers the reader, not these.
 | [`prompter.md`](prompter.md) | The teleprompter: scripts from a phone, page turners, the page timer. |
 | [`weather.md`](weather.md) | Today, the next 24 hours and ten days from Open-Meteo, fetched once a day. |
 | [`mathquiz.md`](mathquiz.md) | Sums by school class, and the score and speed charts. |
+| [`chesspuz.md`](chesspuz.md) | Checkmate: the mate puzzles, hints, and the daily score. |
 
 ## The rules a game implements
 
