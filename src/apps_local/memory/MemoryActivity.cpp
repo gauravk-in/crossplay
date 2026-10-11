@@ -117,6 +117,9 @@ void MemoryActivity::flipCard(const int index) {
   const mem::Game before = game_;
   const mem::Flip result = mem::flip(game_, index);
   if (result == mem::Flip::Refused) return;
+  // A fast paint leaves a ghost of a face turned back down; the half refresh
+  // scrubs every pixel.
+  if (before.upCount == 2) fullRefresh_ = true;
   const mem::Recall recall = mem::lastRecall(before, game_, before.turn);
 
   switch (result) {
@@ -207,7 +210,10 @@ void MemoryActivity::onMatchStart(const bool goesFirst) {
 }
 
 bool MemoryActivity::takeOpponentState() {
+  const bool hadMissUp = game_.upCount == 2;
   if (!play_.takeOpponent(game_)) return false;
+  // This device's miss was still up, and their turn turned it back down.
+  if (hadMissUp) fullRefresh_ = true;
   dealt_ = true;
   news_ = game_.upCount == 2 ? "THEY MISSED. YOUR TURN" : "";
   return true;
