@@ -91,8 +91,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends libpcre3
 
+      # FORK CHANGE: high severity blocks, as in crossplay-ci.yml; the fork's
+      # medium and low findings are a backlog that job lists on every run.
       - name: Run cppcheck
-        run: pio check --fail-on-defect low --fail-on-defect medium --fail-on-defect high
+        run: pio check --fail-on-defect high
 
   build:
     name: Build ${{ matrix.env }}

@@ -24,7 +24,9 @@
 #include "../../src/apps_local/connections/ConnectionsScreens.h"
 #include "../../src/apps_local/dungeon/DungeonScreens.h"
 #include "../../src/apps_local/forehead/ForeheadScreens.h"
+#include "../../src/apps_local/gcal/GCalScreens.h"
 #include "../../src/apps_local/go/GoScreens.h"
+#include "../../src/apps_local/gtasks/GTasksScreens.h"
 #include "../../src/apps_local/hackernews/HackerNewsScreens.h"
 #include "../../src/apps_local/hearts/HeartsBrain.h"
 #include "../../src/apps_local/hearts/HeartsScreens.h"
@@ -52,11 +54,13 @@
 #include "../../src/apps_local/ui/ToyboxIcons.h"
 #include "../../src/apps_local/ui/ToyboxText.h"
 #include "../../src/apps_local/ui/ToyboxWrappedText.h"
+#include "../../src/apps_local/wallet/WalletScreens.h"
 #include "../../src/apps_local/wallpapers/WallpapersCore.h"
 #include "../../src/apps_local/wallpapers/WallpapersScreens.h"
 #include "../../src/apps_local/wavelength/WavelengthScreens.h"
 #include "../../src/apps_local/wikipedia/WikipediaScreens.h"
 #include "../../src/apps_local/wordle/WordleScreens.h"
+#include "../../src/apps_local/workouts/WorkoutsScreens.h"
 #include "../../src/apps_local/xkcd/XkcdScreens.h"
 #include "../../src/apps_local/yahtzee/YahtzeeScreens.h"
 
@@ -14618,6 +14622,447 @@ void aNoteAsleepIsReadOnlyAndTaller() {
 
 }  // namespace notestest
 
+namespace gtaskstest {
+
+template <typename Build>
+void render(Rendered& out, Build build) {
+  const fui::DeviceContext ctx = device();
+  const fui::InputSnapshot noInput{};
+  toybox::Frame frame(out.target, ctx, noInput, out.interactions);
+  toybox::Screen screen(frame, toybox::themeTokens());
+  build(screen);
+}
+
+// Where a control was registered, so a tap can be aimed at the table the paint
+// produced rather than at a coordinate copied from the builder.
+bool rectOf(const Rendered& out, const fui::ActionId action, const int value, fui::Rect& found) {
+  for (size_t i = 0; i < out.interactions.count(); ++i) {
+    const auto& entry = out.interactions.data()[i];
+    if (entry.action == action && (value < 0 || entry.value == value)) {
+      found = entry.rect;
+      return true;
+    }
+  }
+  return false;
+}
+
+int countOf(const Rendered& out, const fui::ActionId action) {
+  int n = 0;
+  for (size_t i = 0; i < out.interactions.count(); ++i) n += out.interactions.data()[i].action == action ? 1 : 0;
+  return n;
+}
+
+// A whole page of rows, every one tappable, and each tap naming its TASK (the
+// row's index in the whole list) rather than its slot on the glass. A page two
+// tap that reported slot 0 would tick page one's first task.
+void aTapOnARowNamesTheTaskNotTheSlot() {
+  std::vector<gtasksui::Row> all(40);
+  for (auto& r : all) r.title = "Buy milk";
+  std::vector<int> starts;
+  CHECK(gtasksui::paginate(Rendered().target, device(), all.data(), 40, false, starts) >= 2);
+  const int capacity = starts.size() > 1 ? starts[1] : 0;
+  CHECK(capacity >= 4);
+  std::vector<gtasksui::Row> rows(static_cast<size_t>(capacity));
+  for (auto& r : rows) r.title = "Buy milk";
+  rows[1].checked = true;
+  rows[2].due = "DUE 7 OCT";
+  rows[3].child = true;
+
+  Rendered out;
+  gtasksui::ListModel model;
+  model.title = "MY TASKS";
+  model.status = "2 TO SEND";
+  model.rows = rows.data();
+  model.count = capacity;
+  model.firstIndex = capacity;  // page two
+  model.pageLabel = "2 / 3";
+  model.canPagePrev = true;
+  model.canPageNext = true;
+  model.settingsIcon = &icon_go_settings_32;
+  render(out, [&](toybox::Screen& screen) { gtasksui::buildList(screen, model); });
+
+  CHECK(!out.interactions.overflowed());
+  CHECK(countOf(out, gtasksui::ActionToggle) == capacity);
+  for (int i = 0; i < capacity; ++i) {
+    fui::Rect row{};
+    CHECK(rectOf(out, gtasksui::ActionToggle, capacity + i, row));
+    const fui::ActionEvent hit = out.tap(row.x + row.width / 2, row.y + row.height / 2);
+    CHECK(hit.action == gtasksui::ActionToggle && hit.value == capacity + i);
+  }
+  CHECK(out.has(gtasksui::ActionRefresh));
+  CHECK(out.has(gtasksui::ActionSettings));
+  CHECK(out.has(gtasksui::ActionPagePrev));
+  CHECK(out.has(gtasksui::ActionPageNext));
+  CHECK(drewText(out, "2 / 3"));
+  CHECK(drewText(out, "DUE 7 OCT"));
+  CHECK(drewText(out, "2 TO SEND"));
+}
+
+// One page: no arrows to tap and no page label. The first page of a paged
+// list draws its back arrow but cannot be paged back.
+void theArrowsAppearOnlyWhenThereIsSomewhereToGo() {
+  gtasksui::Row one;
+  one.title = "Only task";
+  {
+    Rendered out;
+    gtasksui::ListModel model;
+    model.rows = &one;
+    model.count = 1;
+    render(out, [&](toybox::Screen& screen) { gtasksui::buildList(screen, model); });
+    CHECK(!out.has(gtasksui::ActionPagePrev));
+    CHECK(!out.has(gtasksui::ActionPageNext));
+    CHECK(out.has(gtasksui::ActionRefresh));
+  }
+  {
+    Rendered out;
+    gtasksui::ListModel model;
+    model.rows = &one;
+    model.count = 1;
+    model.pageLabel = "1 / 2";
+    model.canPageNext = true;
+    render(out, [&](toybox::Screen& screen) { gtasksui::buildList(screen, model); });
+    CHECK(!out.has(gtasksui::ActionPagePrev));
+    CHECK(out.has(gtasksui::ActionPageNext));
+  }
+}
+
+void anEmptyListSaysSoAndStillRefreshes() {
+  Rendered out;
+  gtasksui::ListModel model;
+  model.emptyHeadline = "NOT SYNCED YET";
+  model.emptyMessage = "Tap REFRESH to fetch your Google Tasks.";
+  render(out, [&](toybox::Screen& screen) { gtasksui::buildList(screen, model); });
+  CHECK(drewText(out, "NOT SYNCED YET"));
+  CHECK(out.has(gtasksui::ActionRefresh));
+  CHECK(countOf(out, gtasksui::ActionToggle) == 0);
+}
+
+// The interval row cycles; SIGN OUT is there only when there is an account.
+void settingsOffersSignOutOnlyWhenSignedIn() {
+  for (const bool signedIn : {false, true}) {
+    Rendered out;
+    gtasksui::SettingsModel model;
+    model.pollLabel = "EVERY MIN";
+    model.signedIn = signedIn;
+    render(out, [&](toybox::Screen& screen) { gtasksui::buildSettings(screen, model); });
+    CHECK(drewText(out, "EVERY MIN"));
+    CHECK(drewText(out, "AUTO SYNC"));
+    CHECK(drewText(out, "SIGN OUT") == signedIn);
+    CHECK(drewText(out, "SLEEP SCREEN") == signedIn);
+    CHECK(drewText(out, "SHOW"));
+    CHECK(countOf(out, gtasksui::ActionSettingRow) == (signedIn ? 4 : 2));
+    CHECK(out.has(gtasksui::ActionCloseSettings));
+  }
+}
+
+// KEEP sits where REFRESH and BACK TO TASKS sit, so a second jab at the bar
+// that opened the confirm keeps the account.
+void keepingTheAccountIsWhereTheThumbAlreadyIs() {
+  Rendered confirm;
+  render(confirm, [&](toybox::Screen& screen) { gtasksui::buildSignOutConfirm(screen, 2); });
+  Rendered settings;
+  gtasksui::SettingsModel model;
+  model.signedIn = true;
+  render(settings, [&](toybox::Screen& screen) { gtasksui::buildSettings(screen, model); });
+  fui::Rect back{};
+  CHECK(rectOf(settings, gtasksui::ActionCloseSettings, -1, back));
+  const fui::ActionEvent hit = confirm.tap(back.x + 8, back.y + back.height / 2);
+  CHECK(hit.action == gtasksui::ActionKeepSignedIn);
+  CHECK(drewText(confirm, "2 ticks"));
+}
+
+void signingInStartsWithOneButton() {
+  Rendered out;
+  render(out, [&](toybox::Screen& screen) { gtasksui::buildSignIn(screen, nullptr); });
+  CHECK(drewText(out, "SIGN IN"));
+  CHECK(countOf(out, gtasksui::ActionStartSignIn) == 1);
+  // A reason from Google replaces the default sentence.
+  Rendered why;
+  render(why, [&](toybox::Screen& screen) { gtasksui::buildSignIn(screen, "Google signed this reader out."); });
+  CHECK(drewText(why, "Google signed this reader out."));
+}
+
+void thePhonePageQrSitsAboveItsAddress() {
+  Rendered out;
+  fui::Rect qr{};
+  render(out, [&](toybox::Screen& screen) { qr = gtasksui::buildPhone(screen, "http://crossplay-1a2b.local/t"); });
+  // The address whole, never cut: a truncated one does not exist.
+  CHECK(drewText(out, "http://crossplay-1a2b.local/t"));
+  CHECK(drewText(out, "SAME WI-FI AS THE READER"));
+  CHECK(out.has(gtasksui::ActionCancelSignIn));
+  // Big enough for a phone at arm's length, and clear of the header band.
+  CHECK(qr.width >= 180 && qr.width == qr.height);
+  CHECK(qr.y >= 60);
+  fui::Rect cancel{};
+  CHECK(rectOf(out, gtasksui::ActionCancelSignIn, -1, cancel));
+  CHECK(qr.y + qr.height < cancel.y);
+}
+
+// The menu left of the title opens the switcher; only when there are lists.
+void theMenuSitsLeftOfTheTitleAndOpensTheLists() {
+  static const freeink::Icon& menu = icon_gtasks_menu_32;
+  gtasksui::Row one;
+  one.title = "Buy milk";
+  for (const bool withMenu : {true, false}) {
+    Rendered out;
+    gtasksui::ListModel model;
+    model.title = "GROCERIES";
+    model.rows = &one;
+    model.count = 1;
+    model.menuIcon = withMenu ? &menu : nullptr;
+    model.settingsIcon = &icon_go_settings_32;
+    render(out, [&](toybox::Screen& screen) { gtasksui::buildList(screen, model); });
+    CHECK(out.has(gtasksui::ActionOpenLists) == withMenu);
+    CHECK(drewText(out, "GROCERIES"));
+    if (withMenu) {
+      fui::Rect menuRect{};
+      fui::Rect gear{};
+      CHECK(rectOf(out, gtasksui::ActionOpenLists, -1, menuRect));
+      CHECK(rectOf(out, gtasksui::ActionSettings, -1, gear));
+      CHECK(menuRect.x < gear.x);
+      CHECK(menuRect.y < 80);
+    }
+  }
+}
+
+void everyListIsARowThatNamesItsIndex() {
+  gtasksui::ListChoice lists[3];
+  lists[0].title = "My Tasks";
+  lists[0].detail = "4 OPEN";
+  lists[1].title = "Groceries";
+  lists[1].detail = "2 OPEN / ASLEEP";
+  lists[2].title = "Work";
+  lists[2].detail = "0 OPEN";
+  gtasksui::ListsModel model;
+  model.lists = lists;
+  model.count = 3;
+  model.current = 1;
+  Rendered out;
+  render(out, [&](toybox::Screen& screen) { gtasksui::buildLists(screen, model); });
+  CHECK(!out.interactions.overflowed());
+  CHECK(countOf(out, gtasksui::ActionPickList) == 3);
+  CHECK(drewText(out, "Groceries"));
+  CHECK(drewText(out, "2 OPEN / ASLEEP"));
+  CHECK(out.has(gtasksui::ActionCloseLists));
+  for (int i = 0; i < 3; ++i) {
+    fui::Rect row{};
+    CHECK(rectOf(out, gtasksui::ActionPickList, i, row));
+    const fui::ActionEvent hit = out.tap(row.x + row.width / 2, row.y + row.height / 2);
+    CHECK(hit.action == gtasksui::ActionPickList && hit.value == i);
+  }
+}
+
+// A title that will not fit one line takes a second, and its row grows to
+// hold it; past two lines it is cut with an ellipsis rather than mid-word. Short
+// rows stay short, so a page of them holds more than a page of long ones.
+void aLongTitleWrapsToTwoLinesAndItsRowGrows() {
+  gtasksui::Row longRow;
+  longRow.title =
+      "Call the plumber about the boiler making that noise again before the weekend and ask about the radiators";
+  gtasksui::Row shortRow;
+  shortRow.title = "Milk";
+  gtasksui::ListModel model;
+  model.title = "MY TASKS";
+  gtasksui::Row rows[2] = {longRow, shortRow};
+  model.rows = rows;
+  model.count = 2;
+  // The task cut's line box, so two lines outgrow the minimum row.
+  Rendered out;
+  out.target.lineH = 29;
+  render(out, [&](toybox::Screen& screen) { gtasksui::buildList(screen, model); });
+  fui::Rect first{};
+  fui::Rect second{};
+  CHECK(rectOf(out, gtasksui::ActionToggle, 0, first));
+  CHECK(rectOf(out, gtasksui::ActionToggle, 1, second));
+  CHECK(first.height > second.height);
+  CHECK(second.y >= first.y + first.height);
+  CHECK(drewText(out, "Call the plumber"));
+  CHECK(drewText(out, "..."));
+  CHECK(drewText(out, "Milk"));
+
+  std::vector<gtasksui::Row> shorts(40, shortRow);
+  std::vector<gtasksui::Row> longs(40, longRow);
+  std::vector<int> starts;
+  Rendered probe;
+  probe.target.lineH = 29;
+  gtasksui::paginate(probe.target, device(), shorts.data(), 40, false, starts);
+  const int perShortPage = starts.size() > 1 ? starts[1] : 40;
+  gtasksui::paginate(probe.target, device(), longs.data(), 40, false, starts);
+  const int perLongPage = starts.size() > 1 ? starts[1] : 40;
+  CHECK(perShortPage > perLongPage);
+  CHECK(perLongPage >= 1);
+}
+
+// Asleep, the list is a picture: nothing to tap, and more rows than awake.
+void asleepTheListHasNoButtonsAndMoreRoom() {
+  std::vector<gtasksui::Row> all(40);
+  for (auto& r : all) r.title = "Water the plants";
+  std::vector<int> starts;
+  gtasksui::paginate(Rendered().target, device(), all.data(), 40, false, starts);
+  const int awake = starts.size() > 1 ? starts[1] : 0;
+  gtasksui::paginate(Rendered().target, device(), all.data(), 40, true, starts);
+  const int asleep = starts.size() > 1 ? starts[1] : 0;
+  CHECK(asleep > awake);
+  std::vector<gtasksui::Row> rows(static_cast<size_t>(asleep));
+  for (auto& r : rows) r.title = "Water the plants";
+  gtasksui::ListModel model;
+  model.title = "HOME";
+  model.status = "9 OPEN";
+  model.rows = rows.data();
+  model.count = asleep;
+  model.asleep = true;
+  model.settingsIcon = &icon_go_settings_32;
+  model.menuIcon = &icon_gtasks_menu_32;
+  Rendered out;
+  render(out, [&](toybox::Screen& screen) { gtasksui::buildList(screen, model); });
+  CHECK(!out.has(gtasksui::ActionRefresh));
+  CHECK(!out.has(gtasksui::ActionToggle));
+  CHECK(!out.has(gtasksui::ActionOpenLists));
+  CHECK(!out.has(gtasksui::ActionSettings));
+  CHECK(drewText(out, "HOME"));
+  CHECK(drewText(out, "9 OPEN"));
+}
+
+}  // namespace gtaskstest
+
+namespace gcaltest {
+
+using gtaskstest::countOf;
+using gtaskstest::rectOf;
+
+// Three days: a birthday and a meeting on one, today with nothing, a trip.
+struct Fixture {
+  std::vector<gcal::Event> events;
+  std::vector<gcal::Item> items;
+  int64_t today = gcal::daysFromCivil(2026, 10, 6);
+  Fixture() {
+    gcal::Event birthday;
+    birthday.allDay = true;
+    birthday.title = "Mum's birthday";
+    birthday.start = gcal::daysFromCivil(2026, 10, 7);
+    birthday.end = birthday.start + 1;
+    gcal::Event meeting;
+    meeting.title = "Dentist";
+    meeting.location = "High St";
+    meeting.start = gcal::daysFromCivil(2026, 10, 7) * 86400 + 9 * 3600 + 30 * 60;
+    meeting.end = meeting.start + 45 * 60;
+    gcal::Event trip;
+    trip.allDay = true;
+    trip.title = "Lisbon";
+    trip.start = gcal::daysFromCivil(2026, 11, 2);
+    trip.end = trip.start + 3;
+    events = {birthday, meeting, trip};
+    gcal::sortEvents(events);
+    items = gcal::buildSchedule(events, today - 14, today + 90, today);
+  }
+};
+
+void renderSchedule(Rendered& out, const Fixture& f, const bool asleep, const bool canGoToday, int count = -1) {
+  const std::vector<int> heights = gcalui::itemHeights(out.target, f.items);
+  gcalui::ScheduleModel model;
+  model.title = "OCTOBER 2026";
+  model.status = "14:32";
+  model.items = f.items.data();
+  model.heights = heights.data();
+  model.count = count >= 0 ? count : static_cast<int>(f.items.size());
+  model.events = f.events.data();
+  model.eventCount = static_cast<int>(f.events.size());
+  model.today = f.today;
+  model.canPageNext = true;
+  model.canGoToday = canGoToday;
+  model.settingsIcon = &icon_go_settings_32;
+  model.asleep = asleep;
+  gtaskstest::render(out, [&](toybox::Screen& screen) { gcalui::buildSchedule(screen, model); });
+}
+
+// Every row of a page that fits is drawn: the day, the event, its time and
+// place, the month banner, and today's "nothing" line.
+void theSchedulePageDrawsEveryRowItWasGiven() {
+  const Fixture f;
+  Rendered out;
+  const std::vector<int> heights = gcalui::itemHeights(out.target, f.items);
+  CHECK(heights.size() == f.items.size());
+  const int fit = gcal::fitFrom(heights, 0, gcalui::pageHeight(device(), false));
+  CHECK(fit == static_cast<int>(f.items.size()));
+  renderSchedule(out, f, false, false);
+  CHECK(!out.interactions.overflowed());
+  CHECK(drewText(out, "Nothing planned"));
+  CHECK(drewText(out, "Mum's birthday"));
+  CHECK(drewText(out, "09:30 - 10:15, High St"));
+  CHECK(drewText(out, "NOVEMBER 2026"));
+  CHECK(drewText(out, "DAY 2 / 3"));
+  CHECK(drewText(out, "TUE"));
+  CHECK(drewText(out, "14:32"));
+  CHECK(out.has(gcalui::ActionRefresh));
+  CHECK(out.has(gcalui::ActionPageNext));
+  CHECK(out.has(gcalui::ActionSettings));
+  // Today is on the page, so TODAY has nowhere to go; nor does the back arrow.
+  CHECK(!out.has(gcalui::ActionToday));
+  CHECK(!out.has(gcalui::ActionPagePrev));
+}
+
+void todayIsTappableWhenThePageHasMovedOn() {
+  const Fixture f;
+  Rendered out;
+  renderSchedule(out, f, false, true);
+  CHECK(out.has(gcalui::ActionToday));
+}
+
+void asleepTheScheduleHasNoButtons() {
+  const Fixture f;
+  Rendered out;
+  renderSchedule(out, f, true, true);
+  CHECK(!out.has(gcalui::ActionRefresh));
+  CHECK(!out.has(gcalui::ActionToday));
+  CHECK(!out.has(gcalui::ActionSettings));
+  CHECK(!out.has(gcalui::ActionPageNext));
+  CHECK(drewText(out, "Dentist"));
+  // The sleeping page runs to the bottom of the panel.
+  CHECK(gcalui::pageHeight(device(), true) > gcalui::pageHeight(device(), false));
+}
+
+void anEmptyCalendarSaysSoAndStillRefreshes() {
+  Rendered out;
+  gcalui::ScheduleModel model;
+  model.emptyHeadline = "NOT SYNCED YET";
+  gtaskstest::render(out, [&](toybox::Screen& screen) { gcalui::buildSchedule(screen, model); });
+  CHECK(drewText(out, "NOT SYNCED YET"));
+  CHECK(out.has(gcalui::ActionRefresh));
+}
+
+void calendarSettingsOfferSignOutOnlyWhenSignedIn() {
+  for (const bool signedIn : {false, true}) {
+    Rendered out;
+    gcalui::SettingsModel model;
+    model.pollLabel = "EVERY 5 MIN";
+    model.sleepLabel = "OFF";
+    model.account = "gaurav@example.com";
+    model.signedIn = signedIn;
+    gtaskstest::render(out, [&](toybox::Screen& screen) { gcalui::buildSettings(screen, model); });
+    CHECK(drewText(out, "EVERY 5 MIN"));
+    CHECK(drewText(out, "SLEEP SCREEN"));
+    CHECK(drewText(out, "SIGN OUT") == signedIn);
+    CHECK(countOf(out, gcalui::ActionSettingRow) == (signedIn ? 3 : 2));
+    CHECK(out.has(gcalui::ActionCloseSettings));
+  }
+}
+
+void calendarSignOutKeepsTheAccountUnderTheThumb() {
+  Rendered confirm;
+  gtaskstest::render(confirm, [&](toybox::Screen& screen) { gcalui::buildSignOutConfirm(screen); });
+  Rendered settings;
+  gcalui::SettingsModel model;
+  model.signedIn = true;
+  gtaskstest::render(settings, [&](toybox::Screen& screen) { gcalui::buildSettings(screen, model); });
+  fui::Rect back{};
+  CHECK(rectOf(settings, gcalui::ActionCloseSettings, -1, back));
+  const fui::ActionEvent hit = confirm.tap(back.x + 8, back.y + back.height / 2);
+  CHECK(hit.action == gcalui::ActionKeepSignedIn);
+  CHECK(drewText(confirm, "Tasks"));
+}
+
+}  // namespace gcaltest
+
 namespace wordletest {
 
 void buildGame(Rendered& out, const wordleui::GameModel& model, wordleui::KeyboardLayout& keys) {
@@ -14784,7 +15229,522 @@ void theMenuOffersTodayOnlyWhenThereIsOne() {
 
 }  // namespace wordletest
 
+// --- Cards: the code has its square to itself, and every card can be left --
+
+namespace wallettest {
+
+template <typename Build>
+void build(Rendered& out, Build&& fn) {
+  const fui::DeviceContext ctx = device();
+  const fui::InputSnapshot noInput{};
+  toybox::Frame frame(out.target, ctx, noInput, out.interactions);
+  toybox::Screen screen(frame, toybox::themeTokens());
+  fn(screen);
+}
+
+int countAction(const Rendered& out, const fui::ActionId action) {
+  int n = 0;
+  for (size_t i = 0; i < out.interactions.count(); ++i) {
+    if (out.interactions.data()[i].action == action) n++;
+  }
+  return n;
+}
+
+const fui::Rect* hitFor(const Rendered& out, const fui::ActionId action) {
+  for (size_t i = 0; i < out.interactions.count(); ++i) {
+    if (out.interactions.data()[i].action == action) return &out.interactions.data()[i].rect;
+  }
+  return nullptr;
+}
+
+bool drew(const Rendered& out, const char* text) {
+  for (const auto& run : out.target.texts) {
+    if (run.text == text) return true;
+  }
+  return false;
+}
+
+bool overlaps(const fui::Rect& a, const fui::Rect& b) {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
+void theListOpensEveryVisibleCardAndThePencilIsOnTheBand() {
+  const walletui::ListRow rows[] = {{"Lidl Plus", "Member 4821"},
+                                    {"Boarding pass", "LH 1234, seat 14C"},
+                                    {"My contact", ""},
+                                    {"Gym", ""},
+                                    {"Library", "Card 22"},
+                                    {"Wi-Fi", "Guests"},
+                                    {"Bakery", ""},
+                                    {"Museum", ""}};
+  const int capacity = walletui::listCapacity(device());
+  CHECK(capacity >= 5);
+  CHECK(capacity < 8);
+  Rendered out;
+  walletui::ListModel model;
+  model.rows = rows;
+  model.count = 8;
+  model.pageLabel = "1/2";
+  build(out, [&](toybox::Screen& screen) { walletui::buildList(screen, model); });
+  CHECK(countAction(out, walletui::ActionOpenCard) == capacity);
+  CHECK(countAction(out, walletui::ActionUsePhone) == 1);
+  const fui::Rect* pencil = hitFor(out, walletui::ActionUsePhone);
+  CHECK(pencil != nullptr && pencil->y + pencil->height <= 119 && pencil->x > 240);
+  CHECK(drew(out, "Lidl Plus"));
+  CHECK(drew(out, "Member 4821"));
+  CHECK(drew(out, "1/2"));
+  // Every row inside the panel.
+  for (size_t i = 0; i < out.interactions.count(); ++i) {
+    const auto& hit = out.interactions.data()[i];
+    CHECK(hit.rect.y + hit.rect.height <= 800);
+  }
+}
+
+void anEmptyListSaysWhereCardsComeFrom() {
+  Rendered out;
+  walletui::ListModel model;
+  build(out, [&](toybox::Screen& screen) { walletui::buildList(screen, model); });
+  CHECK(countAction(out, walletui::ActionOpenCard) == 0);
+  CHECK(countAction(out, walletui::ActionUsePhone) == 1);
+  bool said = false;
+  for (const auto& run : out.target.texts) said = said || run.text.find("pencil") != std::string::npos;
+  CHECK(said);
+}
+
+walletui::CardModel cardAt(const bool prev, const bool next, const char* caption) {
+  walletui::CardModel model;
+  model.title = "Boarding pass";
+  model.caption = caption;
+  model.position = "2/3";
+  model.hasPrev = prev;
+  model.hasNext = next;
+  return model;
+}
+
+void theCodeHasItsSquareToItself() {
+  const char* captions[] = {"", "LH 1234 Munich to Lisbon, boarding 06:40, seat 14C, group 2"};
+  for (const char* caption : captions) {
+    Rendered out;
+    fui::Rect square{};
+    const walletui::CardModel model = cardAt(true, true, caption);
+    build(out, [&](toybox::Screen& screen) { square = walletui::buildCard(screen, model); });
+    // Big enough that a version 29 code still gets three pixels a module.
+    CHECK(square.width == square.height);
+    CHECK(square.width >= 133 * 3);
+    CHECK(square.y >= 99);
+    CHECK(square.x >= 16 && square.x + square.width <= 480 - 16);
+    // Nothing drawn or tappable inside it: the code's quiet zone stays white.
+    for (const auto& run : out.target.texts) CHECK(!overlaps(run.rect, square));
+    for (size_t i = 0; i < out.interactions.count(); ++i) {
+      CHECK(!overlaps(out.interactions.data()[i].rect, square));
+    }
+    CHECK(drew(out, "2/3"));
+    CHECK(countAction(out, walletui::ActionDelete) == 1);
+  }
+}
+
+void prevAndNextAreOnlyThereWhenThereIsACardThatWay() {
+  {
+    Rendered out;
+    const walletui::CardModel model = cardAt(false, true, "");
+    build(out, [&](toybox::Screen& screen) { walletui::buildCard(screen, model); });
+    CHECK(countAction(out, walletui::ActionPrev) == 0);
+    CHECK(countAction(out, walletui::ActionNext) == 1);
+  }
+  {
+    Rendered out;
+    const walletui::CardModel model = cardAt(true, false, "");
+    build(out, [&](toybox::Screen& screen) { walletui::buildCard(screen, model); });
+    CHECK(countAction(out, walletui::ActionPrev) == 1);
+    CHECK(countAction(out, walletui::ActionNext) == 0);
+  }
+}
+
+bool covers(const fui::Rect& outer, const fui::Rect& inner) {
+  return inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.width <= outer.x + outer.width &&
+         inner.y + inner.height <= outer.y + outer.height;
+}
+
+void keepItSitsWhereNextWas() {
+  Rendered card;
+  const walletui::CardModel model = cardAt(true, true, "");
+  build(card, [&](toybox::Screen& screen) { walletui::buildCard(screen, model); });
+  Rendered confirm;
+  build(confirm, [&](toybox::Screen& screen) {
+    walletui::buildDeleteConfirm(screen, "Boarding pass", "Delete this card from the reader?");
+  });
+  const fui::Rect* next = hitFor(card, walletui::ActionNext);
+  const fui::Rect* moon = hitFor(card, walletui::ActionSleep);
+  const fui::Rect* keep = hitFor(confirm, walletui::ActionDeleteKeep);
+  const fui::Rect* bin = hitFor(card, walletui::ActionDelete);
+  const fui::Rect* yes = hitFor(confirm, walletui::ActionDeleteConfirm);
+  CHECK(next != nullptr && moon != nullptr && keep != nullptr && bin != nullptr && yes != nullptr);
+  if (next && moon && keep) CHECK(covers(*keep, *next) && covers(*keep, *moon));
+  if (moon && yes) CHECK(!overlaps(*moon, *yes));
+  // A second jab at the bin during the repaint lands on nothing that deletes.
+  if (bin && yes) CHECK(!overlaps(*bin, *yes));
+}
+
+void theMoonIsAlwaysThereAndNeverTouchesItsNeighbours() {
+  const bool ends[][2] = {{false, false}, {true, true}, {false, true}};
+  for (const auto& e : ends) {
+    Rendered out;
+    walletui::CardModel model = cardAt(e[0], e[1], "");
+    build(out, [&](toybox::Screen& screen) { walletui::buildCard(screen, model); });
+    CHECK(countAction(out, walletui::ActionSleep) == 1);
+    const fui::Rect* moon = hitFor(out, walletui::ActionSleep);
+    const fui::Rect* prev = hitFor(out, walletui::ActionPrev);
+    const fui::Rect* next = hitFor(out, walletui::ActionNext);
+    if (moon && prev) CHECK(!overlaps(*moon, *prev));
+    if (moon && next) CHECK(!overlaps(*moon, *next));
+  }
+}
+
+void asleepTheCardHasNoButtonsAndTheCodeIsCentred() {
+  Rendered out;
+  walletui::CardModel model = cardAt(true, true, "LH 1234 Munich to Lisbon, seat 14C");
+  model.asleep = true;
+  model.shownAsleep = true;
+  fui::Rect square{};
+  build(out, [&](toybox::Screen& screen) { square = walletui::buildCard(screen, model); });
+  CHECK(out.interactions.count() == 0);
+  CHECK(!drew(out, "2/3"));
+  CHECK(drew(out, "Boarding pass"));
+  CHECK(square.width >= 400 && square.width == square.height);
+  // Centred in the page under the band: more room below the code than the
+  // awake card leaves, where the footer was.
+  Rendered awake;
+  fui::Rect awakeSquare{};
+  const walletui::CardModel open = cardAt(true, true, "LH 1234 Munich to Lisbon, seat 14C");
+  build(awake, [&](toybox::Screen& screen) { awakeSquare = walletui::buildCard(screen, open); });
+  CHECK(square.y > awakeSquare.y);
+  CHECK(square.y + square.height < device().height);
+}
+
+void aBarcodeRunsAcrossThePageAtWholePixelsAndCarriesItsNumber() {
+  // EAN-13: 95 modules and two quiet zones of ten.
+  Rendered out;
+  walletui::CardModel model = cardAt(true, true, "Member since 2021");
+  model.barModules = 115;
+  model.barText = "4006381333931";
+  fui::Rect bars{};
+  build(out, [&](toybox::Screen& screen) { bars = walletui::buildCard(screen, model); });
+  CHECK(!walletui::barsRotated(bars));
+  CHECK(bars.width % 115 == 0 && bars.width / 115 >= 3);
+  CHECK(drew(out, "4006381333931") && drew(out, "Member since 2021"));
+  const fui::Rect* prev = hitFor(out, walletui::ActionPrev);
+  if (prev) CHECK(bars.y + bars.height < prev->y);
+}
+
+void aLongBarcodeTurnsDownThePageRatherThanThinning() {
+  Rendered out;
+  walletui::CardModel model = cardAt(true, true, "");
+  model.barModules = 250;  // one pixel a module across 448
+  model.barText = "MEMBER-00042-XY-LIB-2026";
+  fui::Rect bars{};
+  build(out, [&](toybox::Screen& screen) { bars = walletui::buildCard(screen, model); });
+  CHECK(walletui::barsRotated(bars));
+  CHECK(bars.height % 250 == 0 && bars.height / 250 >= 2);
+  const fui::Rect* prev = hitFor(out, walletui::ActionPrev);
+  if (prev) CHECK(bars.y + bars.height < prev->y);
+}
+
+void thePhoneScreenLeavesOneWayOut() {
+  Rendered out;
+  walletui::PhoneModel model;
+  model.url = "http://192.168.1.20/cards";
+  model.readable = "http://crossplay.local/cards";
+  model.added = 2;
+  fui::Rect qr{};
+  build(out, [&](toybox::Screen& screen) { qr = walletui::buildPhone(screen, model); });
+  CHECK(qr.width >= 120 && qr.width == qr.height);
+  CHECK(countAction(out, walletui::ActionDismiss) == 1);
+  CHECK(drew(out, "2 CARDS ADDED"));
+  CHECK(drew(out, "http://crossplay.local/cards"));
+}
+
+}  // namespace wallettest
+
+// --- Workouts: every visible row is a target, and the week has seven days ----
+
+namespace workoutstest {
+
+template <typename Build>
+void build(Rendered& out, Build&& fn) {
+  const fui::DeviceContext ctx = device();
+  const fui::InputSnapshot noInput{};
+  toybox::Frame frame(out.target, ctx, noInput, out.interactions);
+  toybox::Screen screen(frame, toybox::themeTokens());
+  fn(screen);
+}
+
+int countAction(const Rendered& out, const fui::ActionId action) {
+  int n = 0;
+  for (size_t i = 0; i < out.interactions.count(); ++i) {
+    if (out.interactions.data()[i].action == action) n++;
+  }
+  return n;
+}
+
+// Rows whose target is split around the weight's buttons count once each.
+int rowsWith(const Rendered& out, const fui::ActionId action) {
+  std::vector<int> seen;
+  for (size_t i = 0; i < out.interactions.count(); ++i) {
+    const auto& hit = out.interactions.data()[i];
+    if (hit.action != action) continue;
+    if (std::find(seen.begin(), seen.end(), hit.value) == seen.end()) seen.push_back(hit.value);
+  }
+  return static_cast<int>(seen.size());
+}
+
+bool drew(const Rendered& out, const char* text) {
+  for (const auto& run : out.target.texts) {
+    if (run.text == text) return true;
+  }
+  return false;
+}
+
+workoutsui::HomeModel homeWith(const workoutsui::ScheduleCard* cards, const int count) {
+  workoutsui::HomeModel model;
+  model.cards = cards;
+  model.count = count;
+  model.clockSet = true;
+  std::vector<workouts::LogEntry> log = workouts::parseLog("20730|arms|Upper\n20732|legs|Lower\n");
+  workouts::calendarCells(log, 20732, model.days);
+  return model;
+}
+
+void theHomeScreenOpensEveryVisibleSchedule() {
+  const workoutsui::ScheduleCard cards[] = {
+      {"Upper Body", 1, 5, 17, 6}, {"Lower Body", 2, 4, 15, 0}, {"Push", 3, 3, 10, 10},
+      {"Pull", 4, 4, 13, 0},       {"Cardio", 6, 1, 6, 0},      {"Swim", 8, 1, 2, 0},
+  };
+  const int capacity = workoutsui::homeCapacity(device());
+  CHECK(capacity >= 3);
+  Rendered out;
+  workoutsui::HomeModel model = homeWith(cards, 6);
+  model.pageLabel = "1/2";
+  build(out, [&](toybox::Screen& screen) { workoutsui::buildHome(screen, model); });
+  // One target per card the page holds, by the same layout the Activity pages
+  // with, so the keys and the glass agree about what a page is.
+  CHECK(countAction(out, workoutsui::ActionOpenSchedule) == capacity);
+  // The phone page is the pencil on the band, and nothing below it.
+  CHECK(countAction(out, workoutsui::ActionUsePhone) == 1);
+  CHECK(!drew(out, "EDIT ON YOUR PHONE"));
+  for (size_t i = 0; i < out.interactions.count(); ++i) {
+    const auto& hit = out.interactions.data()[i];
+    if (hit.action == workoutsui::ActionUsePhone) {
+      CHECK(hit.rect.y + hit.rect.height <= 119);
+      CHECK(hit.rect.x > 240);
+    }
+  }
+  CHECK(drew(out, "6 OF 17 SETS TODAY"));
+  CHECK(drew(out, "4 EXERCISES, 15 SETS"));
+  CHECK(drew(out, "DONE TODAY"));
+  CHECK(drew(out, "1/2"));
+  // The second card opens the second schedule.
+  bool second = false;
+  for (size_t i = 0; i < out.interactions.count(); ++i) {
+    const auto& hit = out.interactions.data()[i];
+    if (hit.action == workoutsui::ActionOpenSchedule && hit.value == 1) second = true;
+  }
+  CHECK(second);
+}
+
+void theCalendarShowsLastWeekAndThisFromMonday() {
+  const workoutsui::ScheduleCard cards[] = {{"Upper Body", 1, 5, 17, 0}};
+  Rendered out;
+  const workoutsui::HomeModel model = homeWith(cards, 1);
+  build(out, [&](toybox::Screen& screen) { workoutsui::buildHome(screen, model); });
+  // 2026-10-06 is a Tuesday, so the calendar runs Monday the 28th of
+  // September to Sunday the 11th.
+  CHECK(drew(out, "M 28"));
+  CHECK(drew(out, "S 4"));
+  CHECK(drew(out, "T 6"));
+  CHECK(drew(out, "S 11"));
+  CHECK(!drew(out, "M 12"));
+  CHECK(drew(out, "2 DAYS TRAINED"));
+  // Every cell inside the panel, the second week still above the bottom edge.
+  for (const auto& run : out.target.texts) {
+    CHECK(run.rect.y + run.rect.height <= 800 - 16);
+  }
+  // Trained days are solid squares carrying their mark; rest days are not.
+  CHECK(out.target.blits.size() >= 2 + 1);
+  // Nothing in the strip is a control.
+  CHECK(countAction(out, workoutsui::ActionOpenSchedule) == 1);
+}
+
+void anUnsetClockSaysSoInsteadOfDrawing1970() {
+  Rendered out;
+  workoutsui::HomeModel model;
+  model.clockSet = false;
+  build(out, [&](toybox::Screen& screen) { workoutsui::buildHome(screen, model); });
+  CHECK(out.has(workoutsui::ActionUsePhone));
+  CHECK(!drew(out, "T 1"));
+  CHECK(!drew(out, "0 DAYS TRAINED"));
+  bool said = false;
+  for (const auto& run : out.target.texts) {
+    if (run.text.find("CLOCK") != std::string::npos) said = true;
+  }
+  CHECK(said);
+}
+
+void everyExerciseRowAddsASetAndUndoIsOnlyThereToUse() {
+  const workoutsui::ExerciseRow rows[] = {
+      {"Bench press", 4, 4, 60}, {"Pull-ups", 3, 1, 0}, {"Hanging leg raises to toes on the bar", 10, 0, 999}};
+  workoutsui::ScheduleModel model;
+  model.title = "Upper Body";
+  model.rows = rows;
+  model.count = 3;
+  model.tally = "5/17";
+  {
+    Rendered out;
+    build(out, [&](toybox::Screen& screen) { workoutsui::buildSchedule(screen, model); });
+    CHECK(rowsWith(out, workoutsui::ActionAddSet) == 3);
+    CHECK(out.has(workoutsui::ActionDone));
+    CHECK(!out.has(workoutsui::ActionUndo));
+    CHECK(!out.has(workoutsui::ActionReset));
+    CHECK(drew(out, "DONE"));
+    CHECK(drew(out, "5/17"));
+    // Every row carries its weight between a - and a +.
+    CHECK(drew(out, "60 KG"));
+    CHECK(drew(out, "0 KG"));
+    CHECK(drew(out, "999 KG"));
+    CHECK(countAction(out, workoutsui::ActionWeightDown) == 3);
+    CHECK(countAction(out, workoutsui::ActionWeightUp) == 3);
+    // The buttons are their own targets: a tap on + moves the weight, never a
+    // set, and nothing the row draws overlaps them.
+    for (size_t i = 0; i < out.interactions.count(); ++i) {
+      const auto& hit = out.interactions.data()[i];
+      if (hit.action != workoutsui::ActionWeightUp && hit.action != workoutsui::ActionWeightDown) continue;
+      CHECK(hit.rect.width >= 44 && hit.rect.height >= 44);
+      CHECK(hit.rect.x + hit.rect.width <= 480 - 16);
+      const fui::ActionEvent e = out.tap(hit.rect.x + hit.rect.width / 2, hit.rect.y + hit.rect.height / 2);
+      CHECK(e.action == hit.action && e.value == hit.value);
+      for (size_t j = 0; j < out.interactions.count(); ++j) {
+        const auto& other = out.interactions.data()[j];
+        if (other.action != workoutsui::ActionAddSet) continue;
+        const bool apart =
+            other.rect.x + other.rect.width <= hit.rect.x || hit.rect.x + hit.rect.width <= other.rect.x ||
+            other.rect.y + other.rect.height <= hit.rect.y || hit.rect.y + hit.rect.height <= other.rect.y;
+        CHECK(apart);
+      }
+    }
+    // A tap in the middle of the second row adds to the second exercise.
+    bool hitsSecond = false;
+    for (size_t i = 0; i < out.interactions.count(); ++i) {
+      const auto& hit = out.interactions.data()[i];
+      if (hit.action != workoutsui::ActionAddSet || hit.value != 1) continue;
+      const fui::ActionEvent e = out.tap(hit.rect.x + hit.rect.width / 2, hit.rect.y + hit.rect.height / 2);
+      hitsSecond = e.action == workoutsui::ActionAddSet && e.value == 1;
+    }
+    CHECK(hitsSecond);
+    // Ten sets still fit the row: every box inside the panel's margins.
+    int boxes = 0;
+    for (const auto& stroke : out.target.strokes) {
+      if (stroke.width != 3) continue;
+      boxes++;
+      CHECK(stroke.rect.x >= 16);
+      CHECK(stroke.rect.x + stroke.rect.width <= 480 - 16);
+    }
+    CHECK(boxes == 4 + 3 + 10);
+  }
+  model.canUndo = true;
+  {
+    Rendered out;
+    build(out, [&](toybox::Screen& screen) { workoutsui::buildSchedule(screen, model); });
+    CHECK(out.has(workoutsui::ActionUndo));
+  }
+  // Finished, RESET takes UNDO's place on the right of the bar.
+  model.canReset = true;
+  Rendered out;
+  build(out, [&](toybox::Screen& screen) { workoutsui::buildSchedule(screen, model); });
+  CHECK(out.has(workoutsui::ActionReset));
+  CHECK(!out.has(workoutsui::ActionUndo));
+  fui::Rect reset{};
+  for (size_t i = 0; i < out.interactions.count(); ++i) {
+    if (out.interactions.data()[i].action == workoutsui::ActionReset) reset = out.interactions.data()[i].rect;
+  }
+  // A second jab at RESET while the confirm paints lands on KEEP IT.
+  Rendered confirm;
+  build(confirm, [&](toybox::Screen& screen) {
+    workoutsui::buildResetConfirm(screen, "Upper Body", "Clear all 17 sets and take today off the calendar?");
+  });
+  CHECK(confirm.has(workoutsui::ActionResetConfirm));
+  CHECK(confirm.tap(reset.x + reset.width / 2, reset.y + reset.height / 2).action == workoutsui::ActionResetKeep);
+  CHECK(drew(confirm, "KEEP IT"));
+  CHECK(drew(confirm, "RESET IT"));
+}
+
+void aLongScheduleIsPagedByTheSameCapacity() {
+  std::vector<workoutsui::ExerciseRow> rows(12, workoutsui::ExerciseRow{"Squat", 5, 0});
+  const int capacity = workoutsui::scheduleCapacity(device());
+  CHECK(capacity >= 4);
+  workoutsui::ScheduleModel model;
+  model.title = "Legs";
+  model.rows = rows.data();
+  model.count = 12;
+  model.pageLabel = "1 / 3";
+  Rendered out;
+  build(out, [&](toybox::Screen& screen) { workoutsui::buildSchedule(screen, model); });
+  CHECK(rowsWith(out, workoutsui::ActionAddSet) == capacity);
+  CHECK(drew(out, "1 / 3"));
+  // The last row ends above the action bar.
+  for (size_t i = 0; i < out.interactions.count(); ++i) {
+    const auto& hit = out.interactions.data()[i];
+    if (hit.action == workoutsui::ActionAddSet) CHECK(hit.rect.y + hit.rect.height <= 800 - 16 - 52);
+  }
+}
+
+void thePhoneScreenReservesTheCodeAndLeavesOneWayOut() {
+  workoutsui::PhoneModel model;
+  model.url = "http://192.168.1.20/gym";
+  model.readable = "http://crossplay.local/gym";
+  Rendered out;
+  fui::Rect qr{};
+  build(out, [&](toybox::Screen& screen) { qr = workoutsui::buildPhone(screen, model); });
+  CHECK(qr.width >= 120 && qr.width == qr.height);
+  CHECK(drew(out, "http://crossplay.local/gym"));
+  CHECK(drew(out, "WAITING FOR YOUR PHONE"));
+  CHECK(out.has(workoutsui::ActionDismiss));
+}
+
+}  // namespace workoutstest
+
 int main() {
+  wallettest::theListOpensEveryVisibleCardAndThePencilIsOnTheBand();
+  wallettest::anEmptyListSaysWhereCardsComeFrom();
+  wallettest::theCodeHasItsSquareToItself();
+  wallettest::prevAndNextAreOnlyThereWhenThereIsACardThatWay();
+  wallettest::keepItSitsWhereNextWas();
+  wallettest::theMoonIsAlwaysThereAndNeverTouchesItsNeighbours();
+  wallettest::asleepTheCardHasNoButtonsAndTheCodeIsCentred();
+  wallettest::thePhoneScreenLeavesOneWayOut();
+  gtaskstest::aTapOnARowNamesTheTaskNotTheSlot();
+  gtaskstest::theArrowsAppearOnlyWhenThereIsSomewhereToGo();
+  gtaskstest::anEmptyListSaysSoAndStillRefreshes();
+  gtaskstest::settingsOffersSignOutOnlyWhenSignedIn();
+  gtaskstest::keepingTheAccountIsWhereTheThumbAlreadyIs();
+  gtaskstest::signingInStartsWithOneButton();
+  gtaskstest::thePhonePageQrSitsAboveItsAddress();
+  workoutstest::theHomeScreenOpensEveryVisibleSchedule();
+  workoutstest::theCalendarShowsLastWeekAndThisFromMonday();
+  workoutstest::anUnsetClockSaysSoInsteadOfDrawing1970();
+  workoutstest::everyExerciseRowAddsASetAndUndoIsOnlyThereToUse();
+  workoutstest::aLongScheduleIsPagedByTheSameCapacity();
+  workoutstest::thePhoneScreenReservesTheCodeAndLeavesOneWayOut();
+  gtaskstest::theMenuSitsLeftOfTheTitleAndOpensTheLists();
+  gtaskstest::everyListIsARowThatNamesItsIndex();
+  gtaskstest::asleepTheListHasNoButtonsAndMoreRoom();
+  gcaltest::theSchedulePageDrawsEveryRowItWasGiven();
+  gcaltest::todayIsTappableWhenThePageHasMovedOn();
+  gcaltest::asleepTheScheduleHasNoButtons();
+  gcaltest::anEmptyCalendarSaysSoAndStillRefreshes();
+  gcaltest::calendarSettingsOfferSignOutOnlyWhenSignedIn();
+  gcaltest::calendarSignOutKeepsTheAccountUnderTheThumb();
+  wallettest::aBarcodeRunsAcrossThePageAtWholePixelsAndCarriesItsNumber();
+  wallettest::aLongBarcodeTurnsDownThePageRatherThanThinning();
+  gtaskstest::aLongTitleWrapsToTwoLinesAndItsRowGrows();
   notestest::aNoteAsleepIsReadOnlyAndTaller();
   wordletest::everyKeyIsWhereItIsDrawn();
   wordletest::aFinishedGameShowsTheAnswerAndLetsGo();

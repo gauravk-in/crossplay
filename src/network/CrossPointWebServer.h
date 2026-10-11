@@ -73,6 +73,10 @@ class CrossPointWebServer {
     // app sets before begin() and the client can never name. There is nothing
     // to validate because nothing is accepted.
     NotesOnly,
+    // TasksOnly is the Google Tasks sign-in page: it hands a phone the consent
+    // address the app set, and takes back one pasted address. It reads and
+    // writes nothing on the card; the app does, once it has checked the paste.
+    TasksOnly,
   };
 
   explicit CrossPointWebServer(Surface surface = Surface::Full);
@@ -94,6 +98,21 @@ class CrossPointWebServer {
     const bool changed = notesChanged;
     notesChanged = false;
     return changed;
+  }
+  // The TasksOnly surface. The consent address is set before begin(); a paste
+  // is held until the app takes it, and the app's verdict on it is what the
+  // page shows next ("waiting", "working", "done" or "error", plus a sentence).
+  void setTasksLink(const std::string& url) { tasksLink = url; }
+  bool takeTasksPaste(std::string& out) {
+    if (!tasksPasteNew) return false;
+    tasksPasteNew = false;
+    out = std::move(tasksPaste);
+    tasksPaste.clear();
+    return true;
+  }
+  void setTasksStatus(const char* state, const std::string& message) {
+    tasksState = state;
+    tasksMessage = message;
   }
   ~CrossPointWebServer();
 
@@ -127,10 +146,16 @@ class CrossPointWebServer {
   std::string notesName;
   bool notesIsList = true;
   bool notesChanged = false;
+  std::string tasksLink;
+  std::string tasksPaste;
+  bool tasksPasteNew = false;
+  std::string tasksState = "waiting";
+  std::string tasksMessage;
   bool isFull() const { return surface == Surface::Full; }
   bool isDev() const { return surface == Surface::DeveloperOnly; }
   bool isWallpapers() const { return surface == Surface::WallpapersOnly; }
   bool isNotes() const { return surface == Surface::NotesOnly; }
+  bool isTasks() const { return surface == Surface::TasksOnly; }
 
   // The wallpaper upload, streamed straight to the card. Separate from
   // UploadState because it shares nothing with the multipart path: no
@@ -222,6 +247,10 @@ class CrossPointWebServer {
   void handleNotesPage() const;
   void handleNotesText();
   void handleNotesSave();
+  void handleTasksPage() const;
+  void handleTasksLink();
+  void handleTasksPaste();
+  void handleTasksStatus();
   void handleWallpaperScript() const;
   void handleWallpaperUpload();      // the reply, after the body
   void handleWallpaperUploadData();  // the raw body, streamed
