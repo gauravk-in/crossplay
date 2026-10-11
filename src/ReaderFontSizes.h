@@ -12,8 +12,13 @@
 // below, or the .cpfont files a user installed for an SD family.
 
 // The built-in Noto Serif / Noto Sans families are compiled in at exactly these
-// point sizes (see the global font objects in main.cpp).
+// point sizes (see the global font objects in main.cpp). OMIT_FONTS keeps only
+// Serif 14; other sizes come from SD fonts.
+#ifdef OMIT_FONTS
+inline constexpr uint8_t BUILTIN_READER_POINT_SIZES[] = {14};
+#else
 inline constexpr uint8_t BUILTIN_READER_POINT_SIZES[] = {12, 14, 16, 18};
+#endif
 
 // Vector (.ttf/.otf) fonts offer every whole point size from 8 through 22.
 inline constexpr uint8_t VECTOR_READER_POINT_SIZES[] = {8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22};

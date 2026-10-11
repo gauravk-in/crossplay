@@ -1,0 +1,6 @@
+# Icons for the Prompter app, generated into src/apps_local/prompter/PrompterIcons.h
+# by tools_local/prompter/gen_icons.sh. Format: alias = lucide-name.
+
+# The shelf row. A microphone says "something to say out loud", which is the
+# difference between a teleprompter and the reader it runs on.
+prompter_mark = mic-vocal

@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111110">
+<title>Sign in to Google</title>
+<style>
+/* NotesPage.html's tokens and band, for the reasons given there. */
+:root{
+  --ink:#111110; --paper:#f5f2ea; --paper-2:#ebe7db; --edge:#a9a494; --muted:#46443c;
+  --display:"Arial Narrow",Helvetica,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --gutter:clamp(1.25rem,4vw,2rem);
+}
+@media (prefers-color-scheme:dark){
+  :root{--ink:#f2f1ec; --paper:#100f0e; --paper-2:#1a1917; --edge:#5a564c; --muted:#b8b5aa}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.6 var(--body);-webkit-text-size-adjust:100%}
+
+/* The black band and the 3px rule under it. It stays black in both themes,
+   exactly as site/styles.css:105-127 does, because it is the one element that
+   is the same object on the panel and on the web. Sentence case and one
+   weight: uppercase is for mono labels only. */
+.band{background:#111110;color:#faf9f6;font-family:var(--display);font-weight:400;
+  font-size:clamp(1.6rem,7vw,2.2rem);letter-spacing:.02em;
+  padding:.45em var(--gutter) .3em;display:flex;align-items:baseline;justify-content:space-between;gap:1rem}
+.band-note{font-family:var(--mono);font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;opacity:.75}
+.band-rule{height:3px;background:var(--ink)}
+
+main{max-width:34rem;margin:0 auto;padding:1.6rem var(--gutter) 3rem}
+.eyebrow{font-family:var(--mono);font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 1rem;display:flex;align-items:center}
+.eyebrow::before{content:"";width:2rem;height:1px;background:currentColor;margin-right:.7rem}
+
+.btn{display:block;width:100%;margin-top:1.4rem;font-family:var(--display);font-weight:400;font-size:1.3rem;
+  letter-spacing:.03em;padding:.5em 1.15em .38em;border:3px solid var(--ink);
+  background:var(--ink);color:var(--paper);cursor:pointer}
+.btn[disabled]{opacity:.42;cursor:default}
+.foot{font-family:var(--mono);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--muted);margin:1.4rem 0 0}
+p{margin:0 0 1rem}
+.step{margin:0 0 2.2rem}
+a.btn{text-align:center;text-decoration:none;box-sizing:border-box}
+textarea{display:block;width:100%;min-height:6.5rem;font:15px/1.4 var(--mono);color:var(--ink);
+  background:var(--paper-2);border:1px solid var(--edge);border-radius:0;padding:.7rem;word-break:break-all}
+textarea:focus-visible{outline:3px solid var(--ink)}
+.said{font-family:var(--body);border-left:3px solid var(--ink);padding:.2rem 0 .2rem .8rem;margin:1.2rem 0 0}
+.said:empty{display:none}
+</style>
+</head>
+<body>
+<div class="band"><span>Google Tasks and Calendar</span><span class="band-note" id="state">Loading</span></div>
+<div class="band-rule"></div>
+<main>
+<section class="step">
+<p class="eyebrow">Step 1</p>
+<p>Sign in with Google. When it asks, allow access to Google Tasks and Google Calendar.</p>
+<a class="btn" id="go" target="_blank" rel="noopener" aria-disabled="true">Sign in with Google</a>
+</section>
+<section class="step">
+<p class="eyebrow">Step 2</p>
+<p>Google then opens a page that will not load. That is expected. Copy its whole address from the address bar and paste it here.</p>
+<textarea id="paste" placeholder="http://127.0.0.1:1/?state=..." autocapitalize="off" autocomplete="off" spellcheck="false"></textarea>
+<button class="btn" id="send" disabled>Send to the reader</button>
+<p class="said" id="said"></p>
+</section>
+<p class="foot">Served by the reader itself. Your Google key is kept on its card and nowhere else.</p>
+</main>
+<script>
+(function () {
+var goEl = document.getElementById('go');
+var pasteEl = document.getElementById('paste');
+var sendEl = document.getElementById('send');
+var stateEl = document.getElementById('state');
+var saidEl = document.getElementById('said');
+var watching = false;
+
+function say(state, msg) { stateEl.textContent = state; saidEl.textContent = msg || ''; }
+
+pasteEl.addEventListener('input', function () { sendEl.disabled = pasteEl.value.trim() === ''; });
+
+// The reader answers /t/status with two lines: what it is doing, and a
+// sentence. It is busy talking to Google while "working", so a slow answer
+// here is the reader at work, not a dead page.
+function watch() {
+  if (watching) return;
+  watching = true;
+  (function tick() {
+    fetch('/t/status', { cache: 'no-store' }).then(function (r) { return r.text(); }).then(function (body) {
+      var nl = body.indexOf('\n');
+      var state = nl < 0 ? body : body.slice(0, nl);
+      var msg = nl < 0 ? '' : body.slice(nl + 1);
+      if (state === 'working') { say('Checking', 'The reader is checking with Google.'); setTimeout(tick, 1500); return; }
+      watching = false;
+      if (state === 'done') { say('Signed in', msg); pasteEl.disabled = true; sendEl.disabled = true; return; }
+      say(state === 'error' ? 'Not yet' : 'Ready', msg);
+      sendEl.disabled = pasteEl.value.trim() === '';
+    }).catch(function () { setTimeout(tick, 2000); });
+  })();
+}
+
+sendEl.addEventListener('click', function () {
+  sendEl.disabled = true;
+  say('Sending', '');
+  fetch('/t/code', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+    body: pasteEl.value.trim()
+  }).then(function (r) {
+    if (!r.ok) return r.text().then(function (m) { throw new Error(m || r.status); });
+    watch();
+  }).catch(function (e) {
+    sendEl.disabled = false;
+    say('Not sent', String(e.message || e));
+  });
+});
+
+fetch('/t/link', { cache: 'no-store' }).then(function (r) {
+  if (!r.ok) throw new Error(r.status);
+  return r.text();
+}).then(function (url) {
+  goEl.href = url;
+  goEl.removeAttribute('aria-disabled');
+  say('Ready', '');
+}).catch(function () {
+  say('No answer', 'The reader is not answering. Check it is still on its sign-in screen.');
+});
+})();
+</script>
+</body>
+</html>
