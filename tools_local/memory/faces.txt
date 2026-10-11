@@ -1,0 +1,22 @@
+# Card faces for MEMORY, generated into src/apps_local/memory/MemoryFaces.h by
+# tools_local/memory/gen_memory_icons.sh. Eighteen, one per pair of the 6x6
+# board. Picked for silhouette: at a glance across a board of 36 no two may be
+# confused, so no two share an outline (no second animal head, no second disc).
+star      = star
+heart     = heart
+moon      = moon
+sun       = sun
+cloud     = cloud
+umbrella  = umbrella
+anchor    = anchor
+bell      = bell
+key       = key
+leaf      = leaf
+fish      = fish
+bird      = bird
+flower    = flower
+music     = music
+apple     = apple
+cat       = cat
+rocket    = rocket
+snowflake = snowflake
