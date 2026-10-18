@@ -55,7 +55,7 @@ void WalletActivity::reload() {
     walletui::ListRow row;
     row.title = card.title.empty() ? "UNTITLED" : card.title.c_str();
     row.caption = card.caption.c_str();
-    row.barcode = card.kind != wallet::CodeKind::Qr;
+    row.barcode = wallet::isBarcode(card.kind);
     rows_.push_back(row);
   }
   // A card deleted from the phone page while it was on the sleep screen.

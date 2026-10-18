@@ -95,6 +95,7 @@ li .drop{flex:0 0 auto;font-family:var(--mono);font-size:.7rem;letter-spacing:.1
     <div class="typed" id="typed"><textarea id="text" maxlength="1200" placeholder="The text the code holds: a link, a member number..." aria-label="The code's text"></textarea>
       <select id="kind" aria-label="Kind of code">
         <option value="qr">QR code</option>
+        <option value="aztec">Aztec code (boarding passes, rail tickets)</option>
         <option value="code128">Barcode: Code 128 (most loyalty cards)</option>
         <option value="ean13">Barcode: EAN-13 (13 digits)</option>
         <option value="ean8">Barcode: EAN-8 (8 digits)</option>
@@ -132,16 +133,19 @@ var BAR_ICON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strok
 // What the reader can draw (WalletBars.h), by the names the two decoders use.
 var KINDS = {
   qr_code: 'qr', code_128: 'code128', code_39: 'code39', ean_13: 'ean13', ean_8: 'ean8',
-  upc_a: 'upca', upc_e: 'upce', itf: 'itf', codabar: 'codabar'
+  upc_a: 'upca', upc_e: 'upce', itf: 'itf', codabar: 'codabar', aztec: 'aztec'
 };
 var LABELS = {
   qr: 'QR code', code128: 'Code 128 barcode', code39: 'Code 39 barcode', ean13: 'EAN-13 barcode',
-  ean8: 'EAN-8 barcode', upca: 'UPC-A barcode', upce: 'UPC-E barcode', itf: 'ITF barcode', codabar: 'Codabar barcode'
+  ean8: 'EAN-8 barcode', upca: 'UPC-A barcode', upce: 'UPC-E barcode', itf: 'ITF barcode', codabar: 'Codabar barcode',
+  aztec: 'Aztec code'
 };
+// The kinds drawn as a square, like a QR code, rather than as bars.
+var SQUARE = { qr: true, aztec: true };
 // What they can read and the reader cannot draw yet, so the phone says what it
 // found rather than "nothing".
 var UNDRAWABLE = {
-  aztec: 'an Aztec code', pdf417: 'a PDF417 code', data_matrix: 'a Data Matrix code', code_93: 'a Code 93 barcode',
+  pdf417: 'a PDF417 code', data_matrix: 'a Data Matrix code', code_93: 'a Code 93 barcode',
   rss_14: 'a GS1 DataBar', rss_expanded: 'a GS1 DataBar', maxicode: 'a MaxiCode'
 };
 
@@ -218,6 +222,23 @@ var ZX_FORMATS = {
   UPC_E: 'upc_e', ITF: 'itf', CODABAR: 'codabar', AZTEC: 'aztec', PDF_417: 'pdf417', DATA_MATRIX: 'data_matrix',
   CODE_93: 'code_93', RSS_14: 'rss_14', RSS_EXPANDED: 'rss_expanded', MAXICODE: 'maxicode'
 };
+// ZXing hands an Aztec code's bytes over as an ISO-8859-1 string, which
+// browsers decode as Windows-1252 and so change 0x80-0x9F. One character a
+// byte keeps every byte as it was.
+function latin1(bytes) {
+  var out = '';
+  for (var i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i]);
+  return out;
+}
+function utf8Text(bytes) {
+  try { return new TextDecoder('utf-8', { fatal: true }).decode(new Uint8Array(bytes)); } catch (e) { return latin1(bytes); }
+}
+if (window.ZXing && window.ZXing.ZXingStringEncoding) {
+  window.ZXing.ZXingStringEncoding.customDecoder = function (bytes, name) {
+    return name === 'ISO-8859-1' ? latin1(bytes) : new TextDecoder(name).decode(bytes);
+  };
+}
+
 function viaZXing(img) {
   if (!window.ZXing) return null;
   var Z = window.ZXing;
@@ -252,6 +273,11 @@ function viaZXing(img) {
         var bytes = null, meta = result.getResultMetadata();
         var segments = meta && meta.get(Z.ResultMetadataType.BYTE_SEGMENTS);
         if (format === 'qr_code' && segments && segments.length === 1) bytes = Array.prototype.slice.call(segments[0]);
+        if (format === 'aztec') {
+          bytes = [];
+          for (var b = 0; b < text.length; b++) bytes.push(text.charCodeAt(b) & 255);
+          text = utf8Text(bytes);
+        }
         return { bytes: bytes || utf8(text), text: text, kind: KINDS[format] || null, format: format };
       } catch (e) {
         reader.reset();
@@ -298,7 +324,7 @@ fileEl.addEventListener('change', function () {
     toggleEl.textContent = "Type the code's text instead";
     foundEl.textContent = hit.text;
     foundEl.style.display = 'block';
-    status('Found a ' + LABELS[hit.kind] + '. This is what it says:');
+    status('Found ' + (/^[AEIOU]/.test(LABELS[hit.kind]) ? 'an ' : 'a ') + LABELS[hit.kind] + '. This is what it says:');
     refresh();
   }).catch(function () {
     status('That picture could not be opened.', true);
@@ -349,7 +375,7 @@ saveEl.onclick = function () {
 function row(file, title, caption, kind) {
   var li = document.createElement('li');
   var badge = document.createElement('span');
-  badge.className = 'badge'; badge.innerHTML = kind && kind !== 'qr' ? BAR_ICON : QR_ICON;
+  badge.className = 'badge'; badge.innerHTML = kind && !SQUARE[kind] ? BAR_ICON : QR_ICON;
   var text = document.createElement('div');
   text.className = 'text';
   var name = document.createElement('div');

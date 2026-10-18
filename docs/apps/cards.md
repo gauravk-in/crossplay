@@ -41,11 +41,11 @@ both ways up), shows what it found, and sends only its text and kind to the
 reader. A code that will not read can be typed in instead, with a picker for its
 kind. The phone page also lists the cards and can delete them.
 
-The reader draws QR codes and these barcodes: Code 128, Code 39, EAN-13, EAN-8,
-UPC-A, UPC-E, ITF and Codabar. An EAN or UPC typed without its check digit gets
-one. The phone can also read Aztec, PDF417, Data Matrix and Code 93, which some
-boarding passes use, and says it found one, but the reader cannot draw those
-yet.
+The reader draws QR codes, Aztec codes (most boarding passes and many rail
+tickets) and these barcodes: Code 128, Code 39, EAN-13, EAN-8, UPC-A, UPC-E, ITF
+and Codabar. An EAN or UPC typed without its check digit gets one. The phone can
+also read PDF417, Data Matrix and Code 93, and says it found one, but the reader
+cannot draw those yet.
 
 ## On the SD card
 
@@ -59,15 +59,17 @@ https://example.com  <- everything after line two is the code's payload
 ```
 
 A barcode card names its kind after the title and a tab, `Lidl Plus<TAB>ean13`;
-the names are `code128`, `code39`, `ean13`, `ean8`, `upca`, `upce`, `itf` and
-`codabar`. A title with no kind is a QR code, so files from before barcodes read
+the names are `aztec`, `code128`, `code39`, `ean13`, `ean8`, `upca`, `upce`,
+`itf` and `codabar`. A title with no kind is a QR code, so files from before barcodes read
 as they always did.
 
 The payload is kept verbatim (a contact card's own line ends survive); only
 trailing line ends are dropped. The reader redraws the code from the payload at
 error correction M (L when only L holds it), so it is sharp at any size.
 Payloads are capped at 1200 bytes, which keeps every module at three pixels or
-more on the panel. Barcodes are redrawn the same way, wide elements three times
+more on the panel. An Aztec code is redrawn the same way, as the smallest symbol
+that holds the payload with a third of its codewords spent on error correction:
+a boarding pass is a 41-module square at nine pixels a module. Barcodes are redrawn the same way, wide elements three times
 the narrow ones, with ten modules of white either side; one wider than 260
 modules with those (about 20 characters of Code 128 text) is refused, because it
 would not get two pixels a module even running down the page.
@@ -78,6 +80,7 @@ would not get two pixels a module even running down the page.
 | ---- | ------------- |
 | `src/apps_local/wallet/WalletCore.*` | File format, upload parsing, QR version choice. Host suite: `host-tests/wallet`. |
 | `src/apps_local/wallet/WalletBars.*` | The barcode kinds and their encoders. Host suite: `host-tests/wallet`; `tools_local/wallet/bars_roundtrip.sh` reads every encoder's bars back with zbar. |
+| `src/apps_local/wallet/WalletAztec.*` | The Aztec encoder. Host suite: `host-tests/wallet`; `tools_local/wallet/aztec_roundtrip.sh` reads its symbols back with ZXing and zxing-cpp. |
 | `src/apps_local/wallet/WalletSleep.*` | Drawing a card's code, and the card on the sleep screen. |
 | `src/apps_local/wallet/WalletScreens.*` | The list, card, confirm and phone screens. Tested in `host-tests/ui`. |
 | `src/apps_local/wallet/WalletStore.*` | SD I/O for `/cards`. |
