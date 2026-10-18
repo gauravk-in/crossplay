@@ -22,6 +22,7 @@ constexpr KindInfo kKinds[] = {
     {CodeKind::UpcE, "upce", "UPC-E"},
     {CodeKind::Itf, "itf", "ITF"},
     {CodeKind::Codabar, "codabar", "CODABAR"},
+    {CodeKind::Aztec, "aztec", "AZTEC"},
 };
 
 // Bar and space widths, bar first. Values 0-102 are symbols, 103-105 the
@@ -357,6 +358,7 @@ bool encodeBars(const CodeKind kind, const std::string& payload, std::vector<uin
     case CodeKind::Codabar:
       return codabar(payload, modules, text);
     case CodeKind::Qr:
+    case CodeKind::Aztec:
       break;
   }
   return false;

@@ -14,7 +14,10 @@
 
 namespace wallet {
 
-enum class CodeKind : uint8_t { Qr, Code128, Code39, Ean13, Ean8, UpcA, UpcE, Itf, Codabar };
+enum class CodeKind : uint8_t { Qr, Code128, Code39, Ean13, Ean8, UpcA, UpcE, Itf, Codabar, Aztec };
+
+// True for the 1D kinds, drawn as bars; QR and Aztec are square matrices.
+constexpr bool isBarcode(CodeKind kind) { return kind != CodeKind::Qr && kind != CodeKind::Aztec; }
 
 // The name in a card file and on the wire: "qr", "code128", "ean13", ...
 const char* kindName(CodeKind kind);
