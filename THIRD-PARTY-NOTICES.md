@@ -30,7 +30,10 @@ Copyright the ZXing authors. The Cards phone page uses it to read a QR code or
 barcode out of a picture on the phone. Its minified build, unmodified, is
 `src/apps_local/wallet/WalletZxing.js`, served from the firmware; full text at
 `src/apps_local/wallet/zxing-LICENSE`. The Code 128, Code 39 and UPC/EAN
-pattern tables in `src/apps_local/wallet/WalletBars.cpp` are ZXing's.
+pattern tables in `src/apps_local/wallet/WalletBars.cpp` are ZXing's, and the
+Aztec symbol layout in `src/apps_local/wallet/WalletAztec.cpp` (bit stuffing,
+layer placement, mode message, bullseye and reference grid) is adapted from
+ZXing's Java Aztec encoder.
 
 **Noto Sans Symbols 2**, SIL Open Font License 1.1. The Solitaire suit glyphs
 are drawn from it. Full text at `src/apps_local/solitaire/art/OFL.txt`, with the

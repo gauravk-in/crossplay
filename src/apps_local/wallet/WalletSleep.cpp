@@ -14,6 +14,7 @@
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxScreen.h"
 #include "../ui/ToyboxTheme.h"
+#include "WalletAztec.h"
 #include "WalletStore.h"
 
 namespace fui = freeink::ui;
@@ -42,6 +43,40 @@ bool writeAsleep(const AsleepChoice& choice) {
 void clearAsleep() { Storage.remove(kAsleepFile); }
 
 namespace {
+
+// A square code at whole pixels per module, with two modules of white inside
+// the square on every side on top of the page's own margin: the quiet zone a
+// scanner needs to find the corners. `dark` answers for one module.
+template <typename Dark>
+bool drawModules(GfxRenderer& renderer, const fui::Rect& square, const int size, const Dark& dark) {
+  const int px = square.width / (size + 4);
+  if (px < 2) return false;
+  const int drawn = size * px;
+  const int x0 = square.x + (square.width - drawn) / 2;
+  const int y0 = square.y + (square.height - drawn) / 2;
+  for (int cy = 0; cy < size; cy++) {
+    // Runs of dark modules as one rectangle each, so a row is a few fills
+    // rather than a hundred.
+    int cx = 0;
+    while (cx < size) {
+      if (!dark(cx, cy)) {
+        cx++;
+        continue;
+      }
+      const int start = cx;
+      while (cx < size && dark(cx, cy)) cx++;
+      renderer.fillRect(x0 + px * start, y0 + px * cy, px * (cx - start), px, true);
+    }
+  }
+  return true;
+}
+
+bool drawAztec(GfxRenderer& renderer, const fui::Rect& square, const std::string& payload) {
+  if (square.width <= 0) return false;
+  AztecSymbol symbol;
+  if (!encodeAztec(payload, symbol)) return false;
+  return drawModules(renderer, square, symbol.size, [&](const int x, const int y) { return symbol.dark(x, y); });
+}
 
 bool drawQr(GfxRenderer& renderer, const fui::Rect& square, const std::string& payload) {
   if (payload.empty() || square.width <= 0) return false;
@@ -78,29 +113,9 @@ bool drawQr(GfxRenderer& renderer, const fui::Rect& square, const std::string& p
     LOG_ERR("CARDS", "QR encode failed at version %d", version);
     return false;
   }
-  // Whole pixels per module, with two modules of white inside the square on
-  // every side on top of the page's own margin: the quiet zone a scanner
-  // needs to find the corners.
-  const int px = square.width / (qr.size + 4);
-  if (px < 2) return false;
-  const int drawn = qr.size * px;
-  const int x0 = square.x + (square.width - drawn) / 2;
-  const int y0 = square.y + (square.height - drawn) / 2;
-  for (uint8_t cy = 0; cy < qr.size; cy++) {
-    // Runs of dark modules as one rectangle each, so a row is a few fills
-    // rather than a hundred.
-    uint8_t cx = 0;
-    while (cx < qr.size) {
-      if (!qrcode_getModule(&qr, cx, cy)) {
-        cx++;
-        continue;
-      }
-      const uint8_t start = cx;
-      while (cx < qr.size && qrcode_getModule(&qr, cx, cy)) cx++;
-      renderer.fillRect(x0 + px * start, y0 + px * cy, px * (cx - start), px, true);
-    }
-  }
-  return true;
+  return drawModules(renderer, square, qr.size, [&](const int x, const int y) {
+    return qrcode_getModule(&qr, static_cast<uint8_t>(x), static_cast<uint8_t>(y));
+  });
 }
 
 // Bars drawn as runs, each run one fill, at the rectangle's whole pixels per
@@ -130,9 +145,11 @@ void drawBars(GfxRenderer& renderer, const fui::Rect& bars, const std::vector<ui
 }  // namespace
 
 void showCard(GfxRenderer& renderer, toybox::Screen& screen, walletui::CardModel model, const Card& card) {
-  if (card.kind == CodeKind::Qr) {
+  if (!isBarcode(card.kind)) {
     const fui::Rect square = walletui::buildCard(screen, model);
-    if (!drawQr(renderer, square, card.payload)) {
+    const bool drawn = card.kind == CodeKind::Aztec ? drawAztec(renderer, square, card.payload)
+                                                    : drawQr(renderer, square, card.payload);
+    if (!drawn) {
       walletui::buildCardFailure(screen, square, "This code holds too much to draw on the panel.");
     }
     return;

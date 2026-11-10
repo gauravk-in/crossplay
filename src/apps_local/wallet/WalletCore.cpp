@@ -3,6 +3,8 @@
 #include <algorithm>
 #include <cstdio>
 
+#include "WalletAztec.h"
+
 namespace wallet {
 
 namespace {
@@ -171,7 +173,13 @@ bool parseUpload(const std::string& body, Card& out, std::string& error) {
     error = "There is no code to save.";
     return false;
   }
-  if (out.kind != CodeKind::Qr) {
+  if (out.kind == CodeKind::Aztec) {
+    AztecSymbol symbol;
+    if (!encodeAztec(out.payload, symbol)) {
+      error = "That code holds too much to draw on the reader.";
+      return false;
+    }
+  } else if (out.kind != CodeKind::Qr) {
     std::vector<uint8_t> modules;
     std::string text;
     if (!encodeBars(out.kind, out.payload, modules, text)) {

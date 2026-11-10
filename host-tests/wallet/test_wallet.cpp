@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "WalletAztec.h"
 #include "WalletCore.h"
 
 using namespace wallet;
@@ -250,7 +251,9 @@ void testBars() {
 
   CodeKind kind;
   CHECK(kindFromName("ean13", kind) && kind == CodeKind::Ean13);
-  CHECK(!kindFromName("aztec", kind));
+  CHECK(kindFromName("aztec", kind) && kind == CodeKind::Aztec);
+  CHECK(!kindFromName("pdf417", kind));
+  CHECK(!isBarcode(CodeKind::Aztec) && !isBarcode(CodeKind::Qr) && isBarcode(CodeKind::Itf));
   CHECK(std::string(kindName(CodeKind::UpcE)) == "upce" && std::string(kindLabel(CodeKind::UpcE)) == "UPC-E");
 }
 
@@ -275,9 +278,60 @@ void testBarcodeCards() {
   CHECK(back.kind == CodeKind::Ean13 && back.payload == "4006381333931");
   CHECK(!parseUpload("Lidl\n\n3430\nean13\n", back, error));
   CHECK(error == "That is not a valid EAN-13 code.");
-  CHECK(!parseUpload("Flight\n\n3430\naztec\n", back, error));
+  CHECK(parseUpload("Flight\n\n3430\naztec\n", back, error) && back.kind == CodeKind::Aztec);
+  CHECK(back.payload == "40");
+  card.kind = CodeKind::Aztec;
+  card.payload = "M1DOE/JANE";
+  CHECK(parseCard(formatCard(card), back) && back.kind == CodeKind::Aztec && back.payload == "M1DOE/JANE");
+  CHECK(!parseUpload("Flight\n\n3430\npdf417\n", back, error));
   CHECK(error == "The reader cannot draw that kind of code yet.");
   CHECK(parseUpload("Site\n\n3430\n", back, error) && back.kind == CodeKind::Qr);
+}
+
+// Every symbol here was read back by ZXing and by zxing-cpp
+// (tools_local/wallet/aztec_roundtrip.sh), so a change that moves a module
+// fails here first.
+uint32_t hashOf(const AztecSymbol& symbol) {
+  uint32_t hash = 2166136261u;
+  for (int y = 0; y < symbol.size; y++) {
+    for (int x = 0; x < symbol.size; x++) {
+      hash ^= symbol.dark(x, y) ? 1u : 0u;
+      hash *= 16777619u;
+    }
+  }
+  return hash;
+}
+
+void testAztec() {
+  AztecSymbol symbol;
+  CHECK(!encodeAztec("", symbol));
+
+  CHECK(encodeAztec("Hello, World!", symbol));
+  CHECK(symbol.size == 19 && symbol.compact && symbol.layers == 2);
+  static const char* kHello[] = {
+      ".##...#####.##.#..#", "....###.###.#.....#", "#####..#..##.###.#.", "###.####...#.....#.", "...###.#..##..#...#",
+      "...############...#", "###.##.......###...", "...###.#####.#.....", "###.##.#...#.##....", ".##..#.#.#.#.##....",
+      ".#...#.#...#.##..#.", "#..###.#####.#...##", "####.#.......####.#", ".....##########..#.", "..#...##..#.....##.",
+      "..#....#.###....#..", "..#.#########.##...", "#..##.#.#...#.##..#", "..#.#.#....#.##...#",
+  };
+  bool same = symbol.size == 19;
+  for (int y = 0; same && y < 19; y++) {
+    for (int x = 0; x < 19; x++) same = same && symbol.dark(x, y) == (kHello[y][x] == '#');
+  }
+  CHECK(same);
+
+  // Every byte value, through Binary Shift, in a full-range symbol with its
+  // reference grid.
+  std::string bytes;
+  for (int i = 0; i < 256; i++) bytes.push_back(static_cast<char>(i));
+  CHECK(encodeAztec(bytes, symbol));
+  CHECK(symbol.size == 57 && !symbol.compact && symbol.layers == 10);
+  CHECK(hashOf(symbol) == 0x1a973906u);
+
+  // Sizes grow with the data, and the reader's largest payload still fits.
+  CHECK(encodeAztec("A", symbol) && symbol.size == 15);
+  CHECK(encodeAztec(std::string(kMaxPayload, '\xff'), symbol) && symbol.size <= 151);
+  CHECK(encodeAztec(std::string(kMaxPayload, 'Z'), symbol) && symbol.size < 151);
 }
 
 }  // namespace
@@ -293,6 +347,7 @@ int main() {
   testAsleep();
   testBars();
   testBarcodeCards();
+  testAztec();
   std::printf("%d checks, %d failed\n", checks, failures);
   return failures == 0 ? 0 : 1;
 }
