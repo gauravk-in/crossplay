@@ -5,8 +5,40 @@
 #include <cstdlib>
 #include <ctime>
 
-#include "BambuCloudRoots.h"
 #include "BambuStore.h"
+
+namespace bambu {
+namespace cloud {
+
+#if !BAMBU_CLOUD
+
+namespace {
+constexpr const char* kNoCloud = "This reader's firmware has no room for Bambu's cloud. Use the LAN settings above.";
+}  // namespace
+
+const char* caRoots() { return ""; }
+
+Login signIn(const std::string&, const std::string&, Account&, std::string& message) {
+  message = kNoCloud;
+  return Login::Refused;
+}
+
+Login signInWithCode(const std::string&, const std::string&, Account&, std::string& message) {
+  message = kNoCloud;
+  return Login::Refused;
+}
+
+int listPrinters(const Account&, Printer*, int, std::string& message) {
+  message = kNoCloud;
+  return -1;
+}
+
+#else
+
+}  // namespace cloud
+}  // namespace bambu
+
+#include "BambuCloudRoots.h"
 
 #if defined(FREEINK_NET_WOLFSSL)
 #include <SecureHttpClient.h>
@@ -167,6 +199,8 @@ int listPrinters(const Account& account, Printer* out, const int max, std::strin
   }
   return readPrinters(body, out, max);
 }
+
+#endif  // BAMBU_CLOUD
 
 }  // namespace cloud
 }  // namespace bambu

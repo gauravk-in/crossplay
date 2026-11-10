@@ -13,6 +13,7 @@
 
 namespace {
 constexpr uint16_t kPort = 80;
+#if BAMBU_CLOUD
 constexpr size_t kMaxSignInBytes = 512;
 
 // One key from a key=value body. A password may hold '=' and anything else
@@ -45,6 +46,7 @@ std::string noLineBreaks(std::string s) {
   }
   return s;
 }
+#endif
 }  // namespace
 
 bool BambuServer::begin() {
@@ -64,9 +66,11 @@ bool BambuServer::begin() {
   // PUT, not POST: this core hands one callback to both the multipart and the
   // raw paths, and the settings are small enough to arrive as a plain body.
   server_->on("/bambu/config", HTTP_PUT, [this] { handleSave(); });
+#if BAMBU_CLOUD
   server_->on("/bambu/cloud/signin", HTTP_PUT, [this] { handleSignIn(); });
   server_->on("/bambu/cloud/code", HTTP_PUT, [this] { handleCode(); });
   server_->on("/bambu/cloud/signout", HTTP_PUT, [this] { handleSignOut(); });
+#endif
   server_->onNotFound([this] { server_->send(404, "text/plain", "Not found"); });
   static const char* kHeaders[] = {"If-None-Match"};
   server_->collectHeaders(kHeaders, 1);
@@ -133,6 +137,12 @@ void BambuServer::handleSave() {
 }
 
 // --- The Bambu account ---------------------------------------------------------
+
+#if !BAMBU_CLOUD
+
+std::string BambuServer::accountFacts() const { return std::string(); }
+
+#else
 
 std::string BambuServer::accountFacts() const {
   const bambu::cloud::Account account =
@@ -255,3 +265,5 @@ void BambuServer::handleSignOut() {
   changed_ = true;
   answer("signed_out", "Signed out. The reader no longer holds anything from your Bambu account.");
 }
+
+#endif  // BAMBU_CLOUD

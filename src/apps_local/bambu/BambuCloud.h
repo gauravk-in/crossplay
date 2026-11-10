@@ -25,6 +25,17 @@
 #include <cstdint>
 #include <string>
 
+// Left out of the ESP32-C3 builds (upstream's X4 and X3): their app partition
+// has no room left for it, and no CrossPlay device is a C3. Without it the
+// phone page's sign-in answers with a sentence and the monitor stays on the LAN.
+#ifndef BAMBU_CLOUD
+#if defined(FREEINK_DEVICE_X4) || defined(FREEINK_DEVICE_X3)
+#define BAMBU_CLOUD 0
+#else
+#define BAMBU_CLOUD 1
+#endif
+#endif
+
 namespace bambu {
 namespace cloud {
 

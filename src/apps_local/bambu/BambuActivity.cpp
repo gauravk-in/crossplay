@@ -108,8 +108,11 @@ void BambuActivity::onExit() {
 
 void BambuActivity::loadConfig() {
   config_ = bambu::parseConfig(bambu::store::read(bambu::store::kConfigPath, bambu::kMaxConfigBytes));
+#if BAMBU_CLOUD
   account_ = bambu::cloud::parseAccount(bambu::store::read(bambu::store::kCloudPath, bambu::cloud::kMaxFileBytes));
-  configured_ = bambu::isComplete(config_) || (!config_.serial.empty() && bambu::cloud::signedIn(account_));
+#endif
+  configured_ =
+      bambu::isComplete(config_) || (BAMBU_CLOUD && !config_.serial.empty() && bambu::cloud::signedIn(account_));
 }
 
 void BambuActivity::saveSnapshot(const bool force) {
@@ -205,7 +208,7 @@ void BambuActivity::runConnect() {
     return cancel_;
   };
   const bool canLocal = bambu::isComplete(config_);
-  const bool canCloud = !config_.serial.empty() && bambu::cloud::signedIn(account_);
+  const bool canCloud = BAMBU_CLOUD && !config_.serial.empty() && bambu::cloud::signedIn(account_);
   const bool localRecentlyFailed = localFailedAt_ != 0 && millis() - localFailedAt_ < kLocalRetryMs;
   bool ok = false;
   bool cloud = false;

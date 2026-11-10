@@ -44,6 +44,7 @@ class BambuServer {
   void handlePage();
   void handleRead();
   void handleSave();
+#if BAMBU_CLOUD
   void handleSignIn();
   void handleCode();
   void handleSignOut();
@@ -51,6 +52,7 @@ class BambuServer {
   // the settings have none, and answers with the printers on the account.
   void finishSignIn(const bambu::cloud::Account& account);
   void answer(const char* result, const std::string& message, const std::string& extra = std::string());
+#endif
   std::string accountFacts() const;
 
   std::unique_ptr<WebServer> server_;
