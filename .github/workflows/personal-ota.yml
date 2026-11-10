@@ -1,6 +1,6 @@
 # FORK CHANGE: Gaurav's personal OTA feed. Every push to `integration` builds
-# the x4pro_ota env and publishes it as a GitHub release on this fork, which is
-# what Settings > Check for Updates on an x4pro_ota build reads
+# the x4pro_ota and sticky_ota envs and publishes both in one GitHub release on
+# this fork, which is what Settings > Check for Updates on those builds reads
 # (scripts_local/publish-ota.sh says how the version and the feed URL work).
 #
 # Needs two repository secrets, GTASKS_CLIENT_ID and GTASKS_CLIENT_SECRET, so
