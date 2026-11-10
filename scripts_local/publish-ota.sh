@@ -55,9 +55,16 @@ export CROSSPLAY_OTA_URL="https://api.github.com/repos/${REPO}/releases/latest"
 # env:asset pairs; the asset name is what that board's updater asks for.
 TARGETS=("x4pro_ota:firmware.bin" "sticky_ota:firmware-sticky.bin")
 
+# Each image is copied out as soon as it is built: the sticky env's
+# custom_sdkconfig rebuild clears the other envs' build directories, which once
+# published a release with no assets because x4pro_ota's firmware.bin was gone.
+STAGE="$(mktemp -d)"
+trap 'rm -rf "$STAGE"' EXIT
+
 cd "$ROOT"
 for target in "${TARGETS[@]}"; do
   env="${target%%:*}"
+  asset="${target#*:}"
   pio run -e "$env"
   BIN="$ROOT/.pio/build/$env/firmware.bin"
   grep -qa "$VERSION" "$BIN" || { echo "version $VERSION is not in $BIN" >&2; exit 1; }
@@ -65,6 +72,13 @@ for target in "${TARGETS[@]}"; do
   if [[ -n "${GTASKS_CLIENT_ID:-}" ]]; then
     grep -qa "$GTASKS_CLIENT_ID" "$BIN" || { echo "Google client id is not in $BIN" >&2; exit 1; }
   fi
+  cp "$BIN" "$STAGE/$asset"
+done
+# Every image is checked again before anything is published, so a release is
+# never created that cannot be given its assets.
+for target in "${TARGETS[@]}"; do
+  asset="${target#*:}"
+  [[ -s "$STAGE/$asset" ]] || { echo "$asset was not staged" >&2; exit 1; }
 done
 echo "built v${VERSION} from $(git rev-parse --short HEAD)"
 if [[ $DRY_RUN == 1 ]]; then
@@ -85,10 +99,9 @@ print(json.dumps({"tag_name": v, "target_commitish": head, "name": v, "body": os
 RELEASE="$(curl -fsS "${AUTH[@]}" -H "Content-Type: application/json" -X POST "https://api.github.com/repos/${REPO}/releases" -d "$BODY")"
 ID="$(printf '%s' "$RELEASE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
 for target in "${TARGETS[@]}"; do
-  env="${target%%:*}"
   asset="${target#*:}"
   curl -fsS "${AUTH[@]}" -H "Content-Type: application/octet-stream" \
-    --data-binary @"$ROOT/.pio/build/$env/firmware.bin" \
+    --data-binary @"$STAGE/$asset" \
     "https://uploads.github.com/repos/${REPO}/releases/${ID}/assets?name=${asset}" >/dev/null
 done
 echo "published v${VERSION}: https://github.com/${REPO}/releases/tag/v${VERSION}"
