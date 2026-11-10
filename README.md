@@ -26,7 +26,7 @@ devices with an 800x480 panel, capacitive touch and two physical buttons
 (three on the Sticky; the design uses the two shared buttons), and
 [CrossPoint](https://crosspointreader.com/) already makes them good at reading.
 CrossPlay is firmware that keeps all of that and adds the other things a screen
-that holds still is good at: **26 games and 14 apps**,
+that holds still is good at: **26 games and 15 apps**,
 spaced-repetition flashcards, comics, a read-later queue, and two devices that
 play together with nothing to set up.
 
@@ -95,6 +95,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Prompter**    | A paged teleprompter: scripts from a phone, turned by tap, key or timer. |
 | **Weather**     | Today, the next 24 hours and ten days, fetched once a day from Open-Meteo. |
 | **Math Quiz**   | Sums for school kids by class, with today's score and speed charted.     |
+| **Bambu**       | A Bambu Lab printer's progress and AMS spools, live over your Wi-Fi.     |
 
 And the reader is still CrossPoint's reader: the EPUB engine, sync and the file
 browser are theirs and stay theirs.

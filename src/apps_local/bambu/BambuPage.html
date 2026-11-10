@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111110">
+<title>Bambu</title>
+<style>
+/* The Notes page's tokens, which are the site's (site/styles.css). No webfont:
+   the reader serves this with no internet. */
+:root{
+  --ink:#111110; --paper:#f5f2ea; --paper-2:#ebe7db; --edge:#a9a494; --muted:#46443c;
+  --display:"Arial Narrow",Helvetica,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --gutter:clamp(1.25rem,4vw,2rem);
+}
+@media (prefers-color-scheme:dark){
+  :root{--ink:#f2f1ec; --paper:#100f0e; --paper-2:#1a1917; --edge:#5a564c; --muted:#b8b5aa}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.5 var(--body);-webkit-text-size-adjust:100%}
+.band{background:#111110;color:#faf9f6;font-family:var(--display);font-size:clamp(1.6rem,7vw,2.2rem);
+  letter-spacing:.02em;padding:.45em var(--gutter) .3em;display:flex;align-items:baseline;
+  justify-content:space-between;gap:1rem}
+.band-note{font-family:var(--mono);font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;opacity:.75}
+.band-rule{height:3px;background:var(--ink)}
+main{max-width:34rem;margin:0 auto;padding:1.6rem var(--gutter) 3rem}
+.eyebrow{font-family:var(--mono);font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);margin:1.8rem 0 .8rem;display:flex;align-items:center}
+.eyebrow:first-child{margin-top:0}
+.eyebrow::before{content:"";width:2rem;height:1px;background:currentColor;margin-right:.7rem}
+.card{border:3px solid var(--ink);background:var(--paper)}
+.field{display:block;padding:.7rem .85rem .8rem;border-bottom:1px solid var(--edge)}
+.field:last-child{border-bottom:0}
+.label{display:block;font-family:var(--display);font-size:1.25rem;line-height:1.2}
+.hint{display:block;font-size:.85rem;color:var(--muted);margin:.15rem 0 .45rem}
+input[type=text],input[type=url],input[type=number],select{width:100%;font:inherit;color:var(--ink);
+  background:var(--paper-2);border:2px solid var(--ink);border-radius:0;padding:.5rem .6rem;-webkit-appearance:none;
+  appearance:none}
+select{background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);
+  background-position:calc(100% - 1.1rem) 55%,calc(100% - .75rem) 55%;background-size:.35rem .35rem;
+  background-repeat:no-repeat;padding-right:2rem}
+.choice{display:flex;gap:.5rem;margin:.2rem 0 .5rem}
+.choice label{flex:1;text-align:center;border:2px solid var(--ink);padding:.45rem .3rem;cursor:pointer;
+  font-family:var(--mono);font-size:.75rem;letter-spacing:.08em;text-transform:uppercase}
+.choice input{position:absolute;opacity:0;pointer-events:none}
+.choice input:checked+span{display:block}
+.choice label.on{background:var(--ink);color:var(--paper)}
+.row{display:flex;gap:.5rem;align-items:center}
+.row input{flex:1}
+.check{display:flex;gap:.7rem;align-items:flex-start;cursor:pointer}
+.check input{width:1.4rem;height:1.4rem;margin:.15rem 0 0;accent-color:var(--ink);flex:0 0 auto}
+.small{font-family:var(--mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink);
+  background:transparent;border:2px solid var(--ink);padding:.5rem .6rem;cursor:pointer;white-space:nowrap}
+.btn{display:block;width:100%;margin-top:1.4rem;font-family:var(--display);font-size:1.3rem;letter-spacing:.03em;
+  padding:.5em 1.15em .38em;border:3px solid var(--ink);background:var(--ink);color:var(--paper);cursor:pointer}
+.btn[disabled]{opacity:.42;cursor:default}
+.facts{font-family:var(--mono);font-size:.8rem;margin:0;padding:.7rem .85rem;display:grid;
+  grid-template-columns:auto 1fr;gap:.25rem 1rem}
+.facts dt{color:var(--muted);text-transform:uppercase;letter-spacing:.1em;font-size:.7rem;padding-top:.1rem}
+.facts dd{margin:0;word-break:break-all}
+.foot{font-family:var(--mono);font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:1.4rem 0 0}
+</style>
+</head>
+<body>
+<div class="band"><span>BAMBU</span><span class="band-note" id="state">Loading</span></div>
+<div class="band-rule"></div>
+<main>
+<form id="form" autocomplete="off">
+<p class="eyebrow">Your printer</p>
+<div class="card">
+  <div class="field">
+    <span class="label">IP address</span>
+    <span class="hint">On the printer: Settings, Network (WLAN on the A1). For example 192.168.1.42.
+      A fixed address in your router keeps this from changing.</span>
+    <input type="text" id="host" inputmode="decimal" spellcheck="false" autocapitalize="off" placeholder="192.168.1.42">
+  </div>
+  <div class="field">
+    <span class="label">Serial number</span>
+    <span class="hint">On the printer: Settings, Device. Also in Bambu Studio under Device, or on the sticker on the back.</span>
+    <input type="text" id="serial" spellcheck="false" autocapitalize="characters" placeholder="01P00A123456789">
+  </div>
+  <div class="field">
+    <span class="label">LAN access code</span>
+    <span class="hint">Eight characters, next to the IP address on the printer's network screen. It changes when
+      LAN mode is turned off and on again.</span>
+    <input type="text" id="access_code" spellcheck="false" autocapitalize="off" maxlength="16" placeholder="12345678">
+  </div>
+</div>
+
+<p class="eyebrow">The reader</p>
+<div class="card">
+  <label class="field check"><input type="checkbox" id="keep_awake">
+    <span><span class="label">Keep the reader awake</span>
+    <span class="hint">Leave it on to keep an eye on a long print. Off lets it go to sleep on its usual timer.</span></span></label>
+</div>
+
+<button class="btn" id="save" type="submit" disabled>Save to the reader</button>
+</form>
+
+<p class="eyebrow">Last word</p>
+<div class="card"><dl class="facts" id="facts"></dl></div>
+<p class="foot">Served by the reader itself. The reader only reads the printer's status; it never sends it a command.</p>
+</main>
+<script>
+(function () {
+var $ = function (id) { return document.getElementById(id); };
+var form = $('form'), save = $('save'), state = $('state');
+
+function say(msg) { state.textContent = msg; }
+// The file is key=value lines, so a value may carry no line break.
+function clean(v) { return String(v).replace(/[\r\n]/g, ' ').trim(); }
+
+function parse(text) {
+  var out = {};
+  text.split('\n').forEach(function (line) {
+    var eq = line.indexOf('=');
+    if (eq > 0) out[line.slice(0, eq).trim()] = line.slice(eq + 1).trim();
+  });
+  return out;
+}
+
+function fill(cfg) {
+  $('host').value = cfg.host || '';
+  $('serial').value = cfg.serial || '';
+  $('access_code').value = cfg.access_code || '';
+  $('keep_awake').checked = cfg.keep_awake !== '0';
+  $('facts').innerHTML = '';
+  [['Status', cfg.status]].forEach(function (f) {
+    if (!f[1]) return;
+    var dt = document.createElement('dt'); dt.textContent = f[0];
+    var dd = document.createElement('dd'); dd.textContent = f[1];
+    $('facts').appendChild(dt); $('facts').appendChild(dd);
+  });
+}
+
+function collect() {
+  return [
+    'host=' + clean($('host').value),
+    'serial=' + clean($('serial').value).toUpperCase(),
+    'access_code=' + clean($('access_code').value),
+    'keep_awake=' + ($('keep_awake').checked ? 1 : 0)
+  ].join('\n') + '\n';
+}
+
+function dirty() { save.disabled = false; say('Not saved'); }
+form.addEventListener('input', dirty);
+form.addEventListener('change', dirty);
+
+form.addEventListener('submit', function (e) {
+  e.preventDefault();
+  var missing = ['host', 'serial', 'access_code'].filter(function (id) { return !clean($(id).value); });
+  if (missing.length) { say('Fill in all three'); $(missing[0]).focus(); return; }
+  save.disabled = true;
+  say('Saving');
+  fetch('/bambu/config', {method: 'PUT', body: collect(), headers: {'Content-Type': 'text/plain'}})
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+    .then(function (t) { fill(parse(t)); say('Saved'); })
+    .catch(function () { save.disabled = false; say('Not saved. Try again'); });
+});
+
+fetch('/bambu/config', {cache: 'no-store'})
+  .then(function (r) { return r.text(); })
+  .then(function (t) { fill(parse(t)); say('Up to date'); })
+  .catch(function () { fill({}); say('Reader not answering'); });
+})();
+</script>
+</body>
+</html>
