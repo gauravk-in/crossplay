@@ -32,6 +32,9 @@ class Library {
  public:
   Credentials loadCredentials() const;
   bool saveCredentials(const Credentials& creds) const;
+  // Which step of the last failed save went wrong ("open", "write",
+  // "rename"), for the phone page's error line. Empty after a success.
+  static const char* lastWriteError();
   // client.cfg's, else the one built in, else an incomplete Client.
   Client loadClient() const;
   // Forgets the account: the token, every cached list and the sleep-screen
