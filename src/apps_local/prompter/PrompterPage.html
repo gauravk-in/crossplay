@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#111110">
+<title>Prompter</title>
+<style>
+/* The Notes and TRMNL pages' tokens, which are the site's (site/styles.css).
+   No webfont: the reader serves this with no internet. */
+:root{
+  --ink:#111110; --paper:#f5f2ea; --paper-2:#ebe7db; --edge:#a9a494; --muted:#46443c;
+  --display:"Arial Narrow",Helvetica,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;
+  --body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --gutter:clamp(1.25rem,4vw,2rem);
+}
+@media (prefers-color-scheme:dark){
+  :root{--ink:#f2f1ec; --paper:#100f0e; --paper-2:#1a1917; --edge:#5a564c; --muted:#b8b5aa}
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:17px/1.5 var(--body);-webkit-text-size-adjust:100%}
+.band{background:#111110;color:#faf9f6;font-family:var(--display);font-size:clamp(1.6rem,7vw,2.2rem);
+  letter-spacing:.02em;padding:.45em var(--gutter) .3em;display:flex;align-items:baseline;
+  justify-content:space-between;gap:1rem}
+.band-note{font-family:var(--mono);font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;opacity:.75}
+.band-rule{height:3px;background:var(--ink)}
+main{max-width:40rem;margin:0 auto;padding:1.6rem var(--gutter) 3rem}
+.eyebrow{font-family:var(--mono);font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--muted);margin:1.8rem 0 .8rem;display:flex;align-items:center}
+.eyebrow:first-child{margin-top:0}
+.eyebrow::before{content:"";width:2rem;height:1px;background:currentColor;margin-right:.7rem}
+.card{border:3px solid var(--ink);background:var(--paper)}
+.field{display:block;padding:.7rem .85rem .8rem;border-bottom:1px solid var(--edge)}
+.field:last-child{border-bottom:0}
+.label{display:block;font-family:var(--display);font-size:1.25rem;line-height:1.2}
+.hint{display:block;font-size:.85rem;color:var(--muted);margin:.15rem 0 .45rem}
+input[type=text],textarea{width:100%;font:inherit;color:var(--ink);background:var(--paper-2);
+  border:2px solid var(--ink);border-radius:0;padding:.5rem .6rem;-webkit-appearance:none;appearance:none}
+textarea{min-height:18rem;resize:vertical;line-height:1.45}
+.list{list-style:none;margin:0;padding:0}
+.list li{display:flex;align-items:center;gap:.5rem;padding:.55rem .85rem;border-bottom:1px solid var(--edge)}
+.list li:last-child{border-bottom:0}
+.list .name{flex:1;font-family:var(--display);font-size:1.15rem;cursor:pointer;word-break:break-word}
+.list .empty{color:var(--muted);font-size:.9rem}
+.small{font-family:var(--mono);font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ink);
+  background:transparent;border:2px solid var(--ink);padding:.5rem .6rem;cursor:pointer;white-space:nowrap}
+.row{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap}
+.btn{display:block;width:100%;margin-top:1.4rem;font-family:var(--display);font-size:1.3rem;letter-spacing:.03em;
+  padding:.5em 1.15em .38em;border:3px solid var(--ink);background:var(--ink);color:var(--paper);cursor:pointer}
+.btn[disabled]{opacity:.42;cursor:default}
+.count{font-family:var(--mono);font-size:.72rem;color:var(--muted);margin-top:.35rem}
+.msg{font-family:var(--mono);font-size:.78rem;letter-spacing:.06em;margin:.9rem 0 0;min-height:1.2em}
+input[type=file]{display:none}
+</style>
+</head>
+<body>
+<div class="band"><span>PROMPTER</span><span class="band-note" id="state">Loading</span></div>
+<div class="band-rule"></div>
+<main>
+<p class="eyebrow">On the reader</p>
+<div class="card"><ul class="list" id="list"><li><span class="empty">Loading the scripts&hellip;</span></li></ul></div>
+
+<p class="eyebrow" id="edit-title">New script</p>
+<form id="form" autocomplete="off">
+<div class="card">
+  <div class="field">
+    <span class="label">Name</span>
+    <input type="text" id="name" maxlength="40" placeholder="Keynote" spellcheck="false">
+  </div>
+  <div class="field">
+    <span class="label">Script</span>
+    <span class="hint">Paste or type it here, or load a .txt file from your phone. A blank line starts a new
+      paragraph; the reader pages it at the size you pick on the reader.</span>
+    <div class="row" style="margin-bottom:.5rem">
+      <button class="small" type="button" id="pick">Load a .txt file</button>
+      <button class="small" type="button" id="clear">Start over</button>
+      <input type="file" id="file" accept=".txt,text/plain">
+    </div>
+    <textarea id="text" spellcheck="true" placeholder="Good evening, everyone."></textarea>
+    <div class="count" id="count">0 words</div>
+  </div>
+</div>
+<button class="btn" type="submit" id="save">Send to the reader</button>
+<p class="msg" id="msg"></p>
+</form>
+</main>
+<script>
+(function(){
+  var $=function(id){return document.getElementById(id)};
+  var MAX=131072;
+  var editing='';
+  function say(t){$('msg').textContent=t}
+  function state(t){$('state').textContent=t}
+  function words(){
+    var t=$('text').value.trim();
+    var n=t?t.split(/\s+/).length:0;
+    var min=Math.max(1,Math.round(n/140));
+    $('count').textContent=n+' words'+(n?', about '+min+' min spoken':'');
+  }
+  function stem(n){return n.replace(/\.txt$/i,'')}
+  function fill(names){
+    var ul=$('list');ul.innerHTML='';
+    if(!names.length){
+      var li=document.createElement('li');
+      li.innerHTML='<span class="empty">No scripts yet. Write one below.</span>';
+      ul.appendChild(li);return;
+    }
+    names.forEach(function(n){
+      var li=document.createElement('li');
+      var s=document.createElement('span');s.className='name';s.textContent=stem(n);
+      s.onclick=function(){open(n)};
+      var e=document.createElement('button');e.className='small';e.type='button';e.textContent='Edit';
+      e.onclick=function(){open(n)};
+      var d=document.createElement('button');d.className='small';d.type='button';d.textContent='Delete';
+      d.onclick=function(){remove(n)};
+      li.appendChild(s);li.appendChild(e);li.appendChild(d);ul.appendChild(li);
+    });
+  }
+  function load(){
+    return fetch('/prompter/scripts',{cache:'no-store'}).then(function(r){return r.text()}).then(function(t){
+      var names=t.split('\n').filter(function(x){return x});
+      fill(names);state(names.length+(names.length===1?' script':' scripts'));
+    }).catch(function(){state('Offline');say('The reader did not answer. Is it still on the phone screen?')});
+  }
+  function open(n){
+    say('Opening '+stem(n)+'…');
+    fetch('/prompter/script?name='+encodeURIComponent(n),{cache:'no-store'}).then(function(r){
+      if(!r.ok)throw 0;return r.text();
+    }).then(function(t){
+      editing=n;$('name').value=stem(n);$('text').value=t;words();
+      $('edit-title').textContent='Editing '+stem(n);say('');
+      $('text').scrollIntoView({behavior:'smooth',block:'start'});
+    }).catch(function(){say('Could not open '+stem(n)+'.')});
+  }
+  function remove(n){
+    if(!confirm('Delete '+stem(n)+' from the reader?'))return;
+    fetch('/prompter/script?name='+encodeURIComponent(n),{method:'DELETE'}).then(function(r){
+      say(r.ok?'Deleted '+stem(n)+'.':'Could not delete it.');
+      if(r.ok&&editing===n){editing='';$('edit-title').textContent='New script'}
+      load();
+    });
+  }
+  $('pick').onclick=function(){$('file').click()};
+  $('clear').onclick=function(){editing='';$('name').value='';$('text').value='';words();
+    $('edit-title').textContent='New script';say('')};
+  $('file').onchange=function(){
+    var f=this.files[0];if(!f)return;
+    var rd=new FileReader();
+    rd.onload=function(){$('text').value=rd.result;if(!$('name').value)$('name').value=stem(f.name);words()};
+    rd.readAsText(f);this.value='';
+  };
+  $('text').addEventListener('input',words);
+  $('form').onsubmit=function(ev){
+    ev.preventDefault();
+    var body=$('text').value;
+    if(!body.trim()){say('Write something first.');return}
+    if(new Blob([body]).size>MAX){say('That is longer than the reader holds (128 KB). Split it in two.');return}
+    var name=$('name').value.trim()||'Script';
+    $('save').disabled=true;say('Sending…');
+    fetch('/prompter/script?name='+encodeURIComponent(name),{method:'PUT',
+      headers:{'Content-Type':'text/plain; charset=utf-8'},body:body}).then(function(r){
+      return r.text().then(function(t){if(!r.ok)throw t;return t});
+    }).then(function(saved){
+      if(editing&&editing!==saved)fetch('/prompter/script?name='+encodeURIComponent(editing),{method:'DELETE'});
+      editing=saved;$('name').value=stem(saved);$('edit-title').textContent='Editing '+stem(saved);
+      say('Sent. '+stem(saved)+' is open on the reader.');load();
+    }).catch(function(t){say(typeof t==='string'&&t?t:'The reader did not take it. Try again.')})
+      .then(function(){$('save').disabled=false});
+  };
+  words();load();
+})();
+</script>
+</body>
+</html>

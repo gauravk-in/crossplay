@@ -25,6 +25,13 @@ notice and permission notice in all copies, and the icons are rasterised into
 bitmaps at build time, so this entry is how that notice reaches a flashed
 device.
 
+**ZXing for JavaScript** (`@zxing/library`) 0.21.3, Apache License 2.0,
+Copyright the ZXing authors. The Cards phone page uses it to read a QR code or
+barcode out of a picture on the phone. Its minified build, unmodified, is
+`src/apps_local/wallet/WalletZxing.js`, served from the firmware; full text at
+`src/apps_local/wallet/zxing-LICENSE`. The Code 128, Code 39 and UPC/EAN
+pattern tables in `src/apps_local/wallet/WalletBars.cpp` are ZXing's.
+
 **Noto Sans Symbols 2**, SIL Open Font License 1.1. The Solitaire suit glyphs
 are drawn from it. Full text at `src/apps_local/solitaire/art/OFL.txt`, with the
 derivation documented in `src/apps_local/solitaire/art/README.md`.
@@ -34,6 +41,11 @@ derivation documented in `src/apps_local/solitaire/art/README.md`.
 rasterised from them into `src/apps_local/chess/ChessPieces.h` at authoring
 time. Full text and the source SVGs at `assets_local/pieces/celtic/`, with the
 choice documented in `docs/design-language.md`.
+
+**Lichess puzzle database**, CC0, from
+[database.lichess.org](https://database.lichess.org/#puzzles). Checkmate's
+puzzles are a selection of it in `src/apps_local/chesspuz/ChessPuzzleData.h`.
+CC0 asks for nothing; the app credits Lichess on its menu anyway.
 
 **michi-c2**, MIT, Copyright (c) Denis Blumstein, from
 [db3108/michi-c2](https://github.com/db3108/michi-c2), a C recoding of Petr

@@ -78,6 +78,7 @@ enum class GameId : uint16_t {
   // last move to two, which moved every field after them.
   Go = 0x0A02,
   Hex = 0x0B01,
+  Memory = 0x0C01,
   // Reserved for host tests, which need an id no real game will ever use.
   Test = 0xFF01,
 };
@@ -93,8 +94,9 @@ enum class GameId : uint16_t {
 // guard, but it turns a silent protocol bug into a compile error, and the
 // alternative is nothing.
 constexpr GameId kAllGameIds[] = {
-    GameId::Chess,        GameId::ConnectFour, GameId::Battleship, GameId::Jaipur, GameId::Checkers, GameId::Yahtzee,
-    GameId::Knucklebones, GameId::SeaSalt,     GameId::ToyBattle,  GameId::Go,     GameId::Hex,      GameId::Test,
+    GameId::Chess,   GameId::ConnectFour,  GameId::Battleship, GameId::Jaipur,    GameId::Checkers,
+    GameId::Yahtzee, GameId::Knucklebones, GameId::SeaSalt,    GameId::ToyBattle, GameId::Go,
+    GameId::Hex,     GameId::Memory,       GameId::Test,
 };
 
 constexpr bool gameIdsAreDistinct() {

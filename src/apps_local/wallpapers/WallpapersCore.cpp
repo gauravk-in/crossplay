@@ -148,7 +148,8 @@ bool drawsPinnedSleep(const uint8_t sleepScreenMode, const bool quickResumeAfter
   // 3. and 4.
   if (sleepScreenMode == kSleepCustom) return true;
   if (sleepScreenMode == kSleepCoverCustom) return !fromReader;
-  // 5. DARK, LIGHT, COVER, BLANK, and NOTE, which draws a note, not this file.
+  // 5. DARK, LIGHT, COVER, BLANK, NOTE, TASKS, CALENDAR and CARD, which draw
+  //    their own pages.
   return false;
 }
 
@@ -208,6 +209,12 @@ const char* sleepScreenModeName(const uint8_t sleepScreenMode) {
       return "Transparent";
     case kSleepNote:
       return "Note";
+    case kSleepTasks:
+      return "Tasks";
+    case kSleepCalendar:
+      return "Calendar";
+    case kSleepCard:
+      return "Card";
     default:
       return "Unknown";
   }
@@ -262,6 +269,12 @@ const char* modeTakeoverNote(const uint8_t previousMode) {
       return "Was Transparent, now Custom.";
     case kSleepNote:
       return "Was Note, now Custom.";
+    case kSleepTasks:
+      return "Was Tasks, now Custom.";
+    case kSleepCalendar:
+      return "Was Calendar, now Custom.";
+    case kSleepCard:
+      return "Was Card, now Custom.";
     default:
       return nullptr;
   }

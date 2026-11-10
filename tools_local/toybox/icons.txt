@@ -465,3 +465,15 @@ wordle        = spell-check
 # The keyboard's delete key: Lucide's `delete` is a backspace key, which is the
 # thing on every phone keyboard, where an arrow alone read as "go back".
 wordle_delete = delete
+
+# Google Tasks. `list-todo` is a ticked box beside lines, which is the app's
+# own screen in miniature, and no other row on the shelf is a list of lines.
+# Spliced in by hand, per the warning at the top of this file.
+gtasks = list-todo
+# The list switcher in its header: three lines, the menu everyone knows.
+gtasks_menu = menu
+
+# Calendar. `calendar-days` is a page of dates, which is what the app is, and
+# nothing else on the shelf is a grid inside a frame with rings on top.
+# Spliced in by hand, per the warning at the top of this file.
+gcal = calendar-days

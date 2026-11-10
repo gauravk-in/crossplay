@@ -54,6 +54,7 @@
 #include "html/NotesPageHtml.generated.h"
 #include "html/RunnerPageHtml.generated.h"
 #include "html/SettingsPageHtml.generated.h"
+#include "html/TasksPageHtml.generated.h"
 #include "html/WallpaperPageHtml.generated.h"
 #include "html/js/jszip_minJs.generated.h"
 #include "html/js/wallconvertJs.generated.h"
@@ -303,6 +304,14 @@ void CrossPointWebServer::begin() {
     // them apart. A note is small enough to arrive as a plain body, so there is
     // no raw handler at all here -- server->arg("plain") is the whole read.
     server->on("/n/text", HTTP_PUT, [this] { handleNotesSave(); });
+  }
+
+  if (isTasks()) {
+    server->on("/t", HTTP_GET, [this] { handleTasksPage(); });
+    server->on("/t/link", HTTP_GET, [this] { handleTasksLink(); });
+    server->on("/t/status", HTTP_GET, [this] { handleTasksStatus(); });
+    // PUT with a plain body, for the reason /n/text is.
+    server->on("/t/code", HTTP_PUT, [this] { handleTasksPaste(); });
   }
 
   // The developer surface. Present for Full and DeveloperOnly and DELIBERATELY
@@ -3459,6 +3468,47 @@ void CrossPointWebServer::handleNotesSave() {
   }
   notesChanged = true;
   server->send(200, "text/plain", "saved");
+}
+
+// ---------------------------------------------------------------------------
+// The Google Tasks sign-in surface: one page, the consent address, one paste.
+// ---------------------------------------------------------------------------
+
+// A pasted address is Google's redirect: a code, a state and a scope list.
+// Nothing real comes near this; it bounds what a page left open can push.
+constexpr size_t kTasksPasteMaxBytes = 4 * 1024;
+
+void CrossPointWebServer::handleTasksPage() const {
+  sendStaticContent(server.get(), TasksPageHtml, sizeof(TasksPageHtml), TasksPageHtmlETag, "text/html");
+}
+
+void CrossPointWebServer::handleTasksLink() {
+  server->sendHeader("Cache-Control", "no-store");
+  if (tasksLink.empty()) {
+    server->send(503, "text/plain", "The reader is not signing in.");
+    return;
+  }
+  server->send(200, "text/plain", tasksLink.c_str());
+}
+
+void CrossPointWebServer::handleTasksPaste() {
+  const String raw = server->arg("plain");
+  if (raw.length() == 0 || raw.length() > kTasksPasteMaxBytes) {
+    server->send(400, "text/plain", "That is not the address Google sent you to.");
+    return;
+  }
+  tasksPaste.assign(raw.c_str(), raw.length());
+  tasksPasteNew = true;
+  tasksState = "working";
+  tasksMessage.clear();
+  server->send(202, "text/plain", "taken");
+}
+
+void CrossPointWebServer::handleTasksStatus() {
+  // Two lines: the state, then a sentence. Plain text so the page sets it with
+  // textContent and nothing the reader says is ever parsed as markup.
+  server->sendHeader("Cache-Control", "no-store");
+  server->send(200, "text/plain; charset=utf-8", (tasksState + "\n" + tasksMessage).c_str());
 }
 
 void CrossPointWebServer::handleWallpaperPage() const {
