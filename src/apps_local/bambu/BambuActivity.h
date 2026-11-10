@@ -8,7 +8,9 @@
 // hardware: the radio, the card, the phone page, and the connection.
 //
 // The settings live on the phone, because an IP address, a fifteen character
-// serial and an access code are a lot of taps on this keyboard. The monitor
+// serial and an access code are a lot of taps on this keyboard. With a Bambu
+// account signed in as well, a printer the LAN cannot reach is followed
+// through Bambu's cloud instead. The monitor
 // stays connected while it is open, so the screen follows the print; it is
 // repainted when something worth seeing changed, and no more often than the
 // panel likes.
@@ -19,6 +21,7 @@
 
 #include "../../activities/Activity.h"
 #include "../ui/ToyboxScreen.h"
+#include "BambuCloud.h"
 #include "BambuCore.h"
 #include "BambuLink.h"
 #include "BambuScreens.h"
@@ -72,6 +75,7 @@ class BambuActivity final : public Activity {
   std::string endsAt() const;
 
   bambu::Config config_;
+  bambu::cloud::Account account_;
   bambu::PrinterState state_;    // what render() draws
   bambu::PrinterState working_;  // what the connection merges into
   bool configured_ = false;
@@ -86,6 +90,9 @@ class BambuActivity final : public Activity {
   bool connecting_ = false;
   bool cancel_ = false;
   bool live_ = false;
+  bool viaCloud_ = false;            // the live link goes through Bambu's broker
+  bool tryingCloud_ = false;         // what the CONNECTING line names
+  unsigned long localFailedAt_ = 0;  // millis(); 0 when the LAN last worked
   bool broughtRadioUp_ = false;
   bool yieldedDevMode_ = false;
   int failures_ = 0;

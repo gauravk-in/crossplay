@@ -35,7 +35,7 @@ main{max-width:34rem;margin:0 auto;padding:1.6rem var(--gutter) 3rem}
 .field:last-child{border-bottom:0}
 .label{display:block;font-family:var(--display);font-size:1.25rem;line-height:1.2}
 .hint{display:block;font-size:.85rem;color:var(--muted);margin:.15rem 0 .45rem}
-input[type=text],input[type=url],input[type=number],select{width:100%;font:inherit;color:var(--ink);
+input[type=text],input[type=url],input[type=number],input[type=password],select{width:100%;font:inherit;color:var(--ink);
   background:var(--paper-2);border:2px solid var(--ink);border-radius:0;padding:.5rem .6rem;-webkit-appearance:none;
   appearance:none}
 select{background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),linear-gradient(135deg,currentColor 50%,transparent 50%);
@@ -73,7 +73,7 @@ select{background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),
   <div class="field">
     <span class="label">IP address</span>
     <span class="hint">On the printer: Settings, Network (WLAN on the A1). For example 192.168.1.42.
-      A fixed address in your router keeps this from changing.</span>
+      A fixed address in your router keeps this from changing. Leave it empty to use only the Bambu account.</span>
     <input type="text" id="host" inputmode="decimal" spellcheck="false" autocapitalize="off" placeholder="192.168.1.42">
   </div>
   <div class="field">
@@ -99,9 +99,37 @@ select{background-image:linear-gradient(45deg,transparent 50%,currentColor 50%),
 <button class="btn" id="save" type="submit" disabled>Save to the reader</button>
 </form>
 
+<p class="eyebrow">Away from home</p>
+<div class="card" id="cloud">
+  <div class="field" id="cloud-out">
+    <span class="label">Bambu account</span>
+    <span class="hint">Sign in to follow the printer through Bambu's cloud when the reader is not on its Wi-Fi.
+      The reader keeps a sign-in token for about three months, never your password.</span>
+    <input type="text" id="email" inputmode="email" spellcheck="false" autocapitalize="off" placeholder="you@example.com">
+    <input type="password" id="password" placeholder="Password" style="margin-top:.5rem">
+    <div class="row" id="code-row" style="margin-top:.5rem;display:none">
+      <input type="text" id="code" inputmode="numeric" maxlength="8" placeholder="Code from the email">
+    </div>
+    <button class="small" id="signin" type="button" style="margin-top:.6rem">Sign in</button>
+  </div>
+  <div class="field" id="cloud-in" style="display:none">
+    <span class="label" id="cloud-who"></span>
+    <span class="hint" id="cloud-until"></span>
+    <button class="small" id="signout" type="button">Sign out</button>
+  </div>
+  <div class="field" id="printers" style="display:none">
+    <span class="label">Printers on the account</span>
+    <span class="hint">Tap one to use it, then save.</span>
+    <div id="printer-list"></div>
+  </div>
+  <div class="field" id="cloud-msg" style="display:none"><span class="hint" id="cloud-said"></span></div>
+</div>
+
+
 <p class="eyebrow">Last word</p>
 <div class="card"><dl class="facts" id="facts"></dl></div>
-<p class="foot">Served by the reader itself. The reader only reads the printer's status; it never sends it a command.</p>
+<p class="foot">Served by the reader itself. The reader only reads the printer's status; it never sends it a command.
+  Your Bambu password goes from this page to the reader and on to Bambu, and is not kept.</p>
 </main>
 <script>
 (function () {
@@ -121,11 +149,76 @@ function parse(text) {
   return out;
 }
 
+var codeEmail = '';
+function cloudSay(msg) {
+  $('cloud-msg').style.display = msg ? '' : 'none';
+  $('cloud-said').textContent = msg || '';
+}
+function fillCloud(cfg) {
+  var inside = !!cfg.cloud_email;
+  $('cloud-in').style.display = inside ? '' : 'none';
+  $('cloud-out').style.display = inside ? 'none' : '';
+  $('cloud-who').textContent = inside ? cfg.cloud_email : '';
+  $('cloud-until').textContent = cfg.cloud_until || '';
+}
+function fillPrinters(list) {
+  var box = $('printer-list');
+  box.innerHTML = '';
+  $('printers').style.display = list.length > 1 ? '' : 'none';
+  list.forEach(function (p) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = 'small'; b.style.margin = '.3rem .4rem 0 0';
+    b.textContent = (p[1] || p[0]) + (p[2] ? ' (' + p[2] + ')' : '') + (p[3] === 'online' ? '' : ', offline');
+    b.addEventListener('click', function () { $('serial').value = p[0]; dirty(); });
+    box.appendChild(b);
+  });
+}
+function parsePrinters(text) {
+  return text.split('\n').filter(function (l) { return l.indexOf('printer=') === 0; })
+    .map(function (l) { return l.slice(8).split('|'); });
+}
+function cloudCall(path, body) {
+  $('signin').disabled = true;
+  cloudSay('Talking to Bambu');
+  return fetch(path, {method: 'PUT', body: body, headers: {'Content-Type': 'text/plain'}})
+    .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+    .then(function (t) {
+      var a = parse(t);
+      $('signin').disabled = false;
+      if (a.result === 'code') {
+        $('code-row').style.display = ''; $('signin').textContent = 'Confirm code'; $('code').focus();
+      } else if (a.result === 'signed_in') {
+        codeEmail = ''; $('password').value = ''; $('code').value = '';
+        $('code-row').style.display = 'none'; $('signin').textContent = 'Sign in';
+        if (a.host !== undefined) fill(a);
+        fillPrinters(parsePrinters(t));
+      } else if (a.result === 'signed_out') {
+        fillPrinters([]);
+      }
+      fillCloud(a);
+      cloudSay(a.message);
+    })
+    .catch(function () { $('signin').disabled = false; cloudSay('The reader did not answer. Try again.'); });
+}
+$('signin').addEventListener('click', function () {
+  var email = clean($('email').value);
+  if (codeEmail) {
+    cloudCall('/bambu/cloud/code', 'email=' + codeEmail + '\ncode=' + clean($('code').value) + '\n');
+    return;
+  }
+  if (!email || !$('password').value) { cloudSay('Fill in your Bambu email and password.'); return; }
+  codeEmail = '';
+  cloudCall('/bambu/cloud/signin', 'email=' + email + '\npassword=' + $('password').value.replace(/[\r\n]/g, '') + '\n')
+    .then(function () { if ($('code-row').style.display === '') codeEmail = email; });
+});
+$('signout').addEventListener('click', function () { cloudCall('/bambu/cloud/signout', 'x=1\n'); });
+
 function fill(cfg) {
   $('host').value = cfg.host || '';
   $('serial').value = cfg.serial || '';
   $('access_code').value = cfg.access_code || '';
   $('keep_awake').checked = cfg.keep_awake !== '0';
+  fillCloud(cfg);
   $('facts').innerHTML = '';
   [['Status', cfg.status]].forEach(function (f) {
     if (!f[1]) return;
@@ -150,8 +243,10 @@ form.addEventListener('change', dirty);
 
 form.addEventListener('submit', function (e) {
   e.preventDefault();
-  var missing = ['host', 'serial', 'access_code'].filter(function (id) { return !clean($(id).value); });
-  if (missing.length) { say('Fill in all three'); $(missing[0]).focus(); return; }
+  var cloudIn = $('cloud-in').style.display === '';
+  var missing = (cloudIn && !clean($('host').value) ? ['serial'] : ['host', 'serial', 'access_code'])
+    .filter(function (id) { return !clean($(id).value); });
+  if (missing.length) { say(cloudIn ? 'Fill in the serial' : 'Fill in all three'); $(missing[0]).focus(); return; }
   save.disabled = true;
   say('Saving');
   fetch('/bambu/config', {method: 'PUT', body: collect(), headers: {'Content-Type': 'text/plain'}})

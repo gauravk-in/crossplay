@@ -95,7 +95,7 @@ the import lands a real pack instead of failing on an unreachable host.
 | **Prompter**    | A paged teleprompter: scripts from a phone, turned by tap, key or timer. |
 | **Weather**     | Today, the next 24 hours and ten days, fetched once a day from Open-Meteo. |
 | **Math Quiz**   | Sums for school kids by class, with today's score and speed charted.     |
-| **Bambu**       | A Bambu Lab printer's progress and AMS spools, live over your Wi-Fi.     |
+| **Bambu**       | A Bambu Lab printer's progress and AMS spools, at home or away.          |
 
 And the reader is still CrossPoint's reader: the EPUB engine, sync and the file
 browser are theirs and stay theirs.

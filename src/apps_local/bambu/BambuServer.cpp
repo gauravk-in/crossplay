@@ -6,12 +6,45 @@
 
 #include <string>
 
+#include "BambuCloudApi.h"
 #include "BambuCore.h"
 #include "BambuPageHtml.generated.h"
 #include "BambuStore.h"
 
 namespace {
 constexpr uint16_t kPort = 80;
+constexpr size_t kMaxSignInBytes = 512;
+
+// One key from a key=value body. A password may hold '=' and anything else
+// but a line break, so only the first '=' splits.
+std::string bodyValue(const std::string& body, const char* key) {
+  const std::string prefix = std::string(key) + "=";
+  size_t pos = 0;
+  while (pos < body.size()) {
+    size_t end = body.find('\n', pos);
+    if (end == std::string::npos) end = body.size();
+    std::string line = body.substr(pos, end - pos);
+    if (!line.empty() && line.back() == '\r') line.pop_back();
+    if (line.compare(0, prefix.size(), prefix) == 0) return line.substr(prefix.size());
+    pos = end + 1;
+  }
+  return std::string();
+}
+
+std::string trimmed(const std::string& s) {
+  size_t a = 0;
+  size_t b = s.size();
+  while (a < b && (s[a] == ' ' || s[a] == '\t')) ++a;
+  while (b > a && (s[b - 1] == ' ' || s[b - 1] == '\t')) --b;
+  return s.substr(a, b - a);
+}
+
+std::string noLineBreaks(std::string s) {
+  for (char& c : s) {
+    if (c == '\n' || c == '\r' || c == '|') c = ' ';
+  }
+  return s;
+}
 }  // namespace
 
 bool BambuServer::begin() {
@@ -31,6 +64,9 @@ bool BambuServer::begin() {
   // PUT, not POST: this core hands one callback to both the multipart and the
   // raw paths, and the settings are small enough to arrive as a plain body.
   server_->on("/bambu/config", HTTP_PUT, [this] { handleSave(); });
+  server_->on("/bambu/cloud/signin", HTTP_PUT, [this] { handleSignIn(); });
+  server_->on("/bambu/cloud/code", HTTP_PUT, [this] { handleCode(); });
+  server_->on("/bambu/cloud/signout", HTTP_PUT, [this] { handleSignOut(); });
   server_->onNotFound([this] { server_->send(404, "text/plain", "Not found"); });
   static const char* kHeaders[] = {"If-None-Match"};
   server_->collectHeaders(kHeaders, 1);
@@ -69,7 +105,7 @@ void BambuServer::handleRead() {
   // writes rather than whatever a computer left in the file.
   const std::string text =
       bambu::formatConfig(bambu::parseConfig(bambu::store::read(bambu::store::kConfigPath, bambu::kMaxConfigBytes))) +
-      facts_;
+      accountFacts() + facts_;
   server_->send(200, "text/plain; charset=utf-8", text.c_str());
 }
 
@@ -93,5 +129,129 @@ void BambuServer::handleSave() {
   }
   changed_ = true;
   server_->sendHeader("Cache-Control", "no-store");
-  server_->send(200, "text/plain; charset=utf-8", (text + facts_).c_str());
+  server_->send(200, "text/plain; charset=utf-8", (text + accountFacts() + facts_).c_str());
+}
+
+// --- The Bambu account ---------------------------------------------------------
+
+std::string BambuServer::accountFacts() const {
+  const bambu::cloud::Account account =
+      bambu::cloud::parseAccount(bambu::store::read(bambu::store::kCloudPath, bambu::cloud::kMaxFileBytes));
+  if (!bambu::cloud::signedIn(account)) return std::string();
+  // The token stays on the reader: the page is told who and until when.
+  return "cloud_email=" + noLineBreaks(account.email) + "\ncloud_until=" + bambu::cloud::untilPhrase(account.expires) +
+         "\n";
+}
+
+void BambuServer::answer(const char* result, const std::string& message, const std::string& extra) {
+  server_->sendHeader("Cache-Control", "no-store");
+  const std::string text =
+      std::string("result=") + result + "\nmessage=" + noLineBreaks(message) + "\n" + extra + accountFacts();
+  server_->send(200, "text/plain; charset=utf-8", text.c_str());
+}
+
+void BambuServer::handleSignIn() {
+  const String raw = server_->arg("plain");
+  if (raw.length() > kMaxSignInBytes) {
+    server_->send(413, "text/plain", "That is too long for the reader.");
+    return;
+  }
+  const std::string body(raw.c_str(), raw.length());
+  const std::string email = trimmed(bodyValue(body, "email"));
+  const std::string password = bodyValue(body, "password");
+  if (email.empty() || password.empty()) {
+    answer("error", "Fill in your Bambu email and password.");
+    return;
+  }
+  bambu::cloud::Account account;
+  std::string message;
+  switch (bambu::cloud::signIn(email, password, account, message)) {
+    case bambu::cloud::Login::Token:
+      finishSignIn(account);
+      return;
+    case bambu::cloud::Login::NeedCode:
+      answer("code", "Bambu sent a code to " + email + ". Type it in below.");
+      return;
+    case bambu::cloud::Login::NeedTfa:
+      answer("error",
+             "This account signs in with an authenticator app, which the reader cannot do yet. Turn two-step "
+             "sign-in off in your Bambu account, or use the LAN settings above.");
+      return;
+    case bambu::cloud::Login::Refused:
+      answer("error", message);
+      return;
+  }
+}
+
+void BambuServer::handleCode() {
+  const String raw = server_->arg("plain");
+  if (raw.length() > kMaxSignInBytes) {
+    server_->send(413, "text/plain", "That is too long for the reader.");
+    return;
+  }
+  const std::string body(raw.c_str(), raw.length());
+  const std::string email = trimmed(bodyValue(body, "email"));
+  const std::string code = trimmed(bodyValue(body, "code"));
+  if (email.empty() || code.empty()) {
+    answer("error", "Type in the code from the email.");
+    return;
+  }
+  bambu::cloud::Account account;
+  std::string message;
+  if (bambu::cloud::signInWithCode(email, code, account, message) != bambu::cloud::Login::Token) {
+    answer("code", message);
+    return;
+  }
+  finishSignIn(account);
+}
+
+void BambuServer::finishSignIn(const bambu::cloud::Account& account) {
+  if (!bambu::store::write(bambu::store::kCloudPath, bambu::cloud::formatAccount(account))) {
+    answer("error", "Bambu signed you in, but the card would not keep it.");
+    return;
+  }
+  changed_ = true;
+  // Heap, not stack: eight printers' strings are over a kilobyte.
+  auto printers = makeUniqueNoThrow<bambu::cloud::Printer[]>(bambu::cloud::kMaxPrinters);
+  std::string message = "There was not enough memory to list the printers.";
+  const int count =
+      printers ? bambu::cloud::listPrinters(account, printers.get(), bambu::cloud::kMaxPrinters, message) : -1;
+  std::string extra;
+  for (int i = 0; i < count; ++i) {
+    extra += "printer=" + printers[i].serial + "|" + noLineBreaks(printers[i].name) + "|" +
+             noLineBreaks(printers[i].model) + "|" + (printers[i].online ? "online" : "offline") + "\n";
+  }
+  // A first sign-in with no LAN settings yet: the account says which printer,
+  // and its access code, so only the address is left to type.
+  bambu::Config config = bambu::parseConfig(bambu::store::read(bambu::store::kConfigPath, bambu::kMaxConfigBytes));
+  int pick = -1;
+  for (int i = 0; i < count; ++i) {
+    if (printers[i].serial == config.serial) pick = i;
+  }
+  if (pick < 0 && config.serial.empty() && count > 0) pick = 0;
+  if (pick >= 0 && (config.serial.empty() || config.accessCode.empty())) {
+    config.serial = printers[pick].serial;
+    if (config.accessCode.empty()) config.accessCode = printers[pick].accessCode;
+    if (!bambu::store::write(bambu::store::kConfigPath, bambu::formatConfig(config))) {
+      LOG_ERR("BAMBU", "config.txt was not updated from the account");
+    }
+  }
+  extra +=
+      bambu::formatConfig(bambu::parseConfig(bambu::store::read(bambu::store::kConfigPath, bambu::kMaxConfigBytes)));
+  if (count < 0) {
+    answer("signed_in", "Signed in. " + message, extra);
+  } else if (count == 0) {
+    answer("signed_in", "Signed in, but there is no printer on this account.", extra);
+  } else {
+    answer("signed_in", "Signed in.", extra);
+  }
+}
+
+void BambuServer::handleSignOut() {
+  if (!bambu::store::remove(bambu::store::kCloudPath)) {
+    answer("error", "The card would not let go of the account.");
+    return;
+  }
+  changed_ = true;
+  answer("signed_out", "Signed out. The reader no longer holds anything from your Bambu account.");
 }

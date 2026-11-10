@@ -1,8 +1,12 @@
 #pragma once
 
-// The phone page's server. One page and one file: GET /bambu is the settings
-// page, and /bambu/config reads and writes the settings. Nothing else is
-// routed, so the address in the QR code reaches the settings and not the card.
+// The phone page's server. GET /bambu is the settings page, /bambu/config
+// reads and writes the settings, and /bambu/cloud/* signs the reader in to a
+// Bambu account and out again. Nothing else is routed, so the address in the
+// QR code reaches the settings and not the card.
+//
+// A sign-in is made from inside the request: the phone waits the few seconds
+// the reader spends talking to Bambu, and gets the answer as the reply.
 //
 // Its own small WebServer rather than another surface on CrossPointWebServer,
 // so adding an app costs no upstream file.
@@ -11,6 +15,8 @@
 
 #include <memory>
 #include <string>
+
+#include "BambuCloud.h"
 
 class BambuServer {
  public:
@@ -38,6 +44,14 @@ class BambuServer {
   void handlePage();
   void handleRead();
   void handleSave();
+  void handleSignIn();
+  void handleCode();
+  void handleSignOut();
+  // Saves a fresh account, fills the serial (and the access code) from it when
+  // the settings have none, and answers with the printers on the account.
+  void finishSignIn(const bambu::cloud::Account& account);
+  void answer(const char* result, const std::string& message, const std::string& extra = std::string());
+  std::string accountFacts() const;
 
   std::unique_ptr<WebServer> server_;
   std::string facts_;
