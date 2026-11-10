@@ -480,7 +480,8 @@ void GTasksActivity::takePaste(const std::string& pasted) {
     return;
   }
   if (!library_.saveCredentials(creds)) {
-    server_->setTasksStatus("error", "The reader's card would not take the sign-in. Check it is not full or locked.");
+    server_->setTasksStatus("error", std::string("The reader's card would not take the sign-in (") +
+                                         gtasks::Library::lastWriteError() + ").");
     show(Phase::Phone);
     return;
   }

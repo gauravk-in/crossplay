@@ -3,7 +3,9 @@
 #include <HalStorage.h>
 #include <Logging.h>
 
+#include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 namespace gtasks {
 namespace {
@@ -29,17 +31,23 @@ bool readWhole(const char* path, std::string& out) {
   return Storage.readFileToString(kTag, path, kReadCap, out);
 }
 
+char gLastWriteError[96] = "";
+
 bool writeAtomically(const char* path, const std::string& text) {
-  Storage.ensureDirectoryExists(kDir);
+  gLastWriteError[0] = '\0';
+  if (!Storage.ensureDirectoryExists(kDir)) snprintf(gLastWriteError, sizeof(gLastWriteError), "mkdir %s; ", kDir);
   const std::string temp = std::string(path) + ".part";
   {
     HalFile file;
     if (!Storage.openFileForWrite(kTag, temp.c_str(), file)) {
       LOG_ERR(kTag, "cannot write %s", temp.c_str());
+      const size_t used = strlen(gLastWriteError);
+      snprintf(gLastWriteError + used, sizeof(gLastWriteError) - used, "open %s", temp.c_str());
       return false;
     }
     if (file.write(reinterpret_cast<const uint8_t*>(text.data()), text.size()) != text.size()) {
       LOG_ERR(kTag, "short write to %s", temp.c_str());
+      snprintf(gLastWriteError, sizeof(gLastWriteError), "write %s", temp.c_str());
       file.close();
       Storage.remove(temp.c_str());
       return false;
@@ -48,6 +56,7 @@ bool writeAtomically(const char* path, const std::string& text) {
   Storage.remove(path);
   if (!Storage.rename(temp.c_str(), path)) {
     LOG_ERR(kTag, "cannot rename %s into place", temp.c_str());
+    snprintf(gLastWriteError, sizeof(gLastWriteError), "rename to %s", path);
     return false;
   }
   return true;
@@ -65,6 +74,8 @@ Credentials Library::loadCredentials() const {
   if (!creds.complete()) LOG_ERR(kTag, "auth.cfg is on the card but holds no refresh token");
   return creds;
 }
+
+const char* Library::lastWriteError() { return gLastWriteError; }
 
 bool Library::saveCredentials(const Credentials& creds) const {
   return writeAtomically(kAuth, serializeCredentials(creds));
