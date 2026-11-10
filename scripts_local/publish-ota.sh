@@ -1,6 +1,8 @@
 #!/bin/bash
-# Build the x4pro_ota env and publish it as a GitHub release, so Settings >
-# Check for Updates on a device running an x4pro_ota build finds it.
+# Build the x4pro_ota and sticky_ota envs and publish them as one GitHub
+# release, so Settings > Check for Updates on a device running either build
+# finds its own image (firmware.bin for the X4 Pro, firmware-sticky.bin for
+# the reTerminal Sticky; CROSSPOINT_RELEASE_ASSET in FirmwareBoardTag.h).
 #
 #   ./scripts_local/publish-ota.sh             # build, then release
 #   ./scripts_local/publish-ota.sh --dry-run   # build only
@@ -50,14 +52,20 @@ VERSION="$(date -u +%Y.%-m%d.%-H%M)"
 export CROSSPLAY_OTA_VERSION="$VERSION"
 export CROSSPLAY_OTA_URL="https://api.github.com/repos/${REPO}/releases/latest"
 
+# env:asset pairs; the asset name is what that board's updater asks for.
+TARGETS=("x4pro_ota:firmware.bin" "sticky_ota:firmware-sticky.bin")
+
 cd "$ROOT"
-pio run -e x4pro_ota
-BIN="$ROOT/.pio/build/x4pro_ota/firmware.bin"
-grep -qa "$VERSION" "$BIN" || { echo "version $VERSION is not in $BIN" >&2; exit 1; }
-grep -qa "$CROSSPLAY_OTA_URL" "$BIN" || { echo "feed URL is not in $BIN" >&2; exit 1; }
-if [[ -n "${GTASKS_CLIENT_ID:-}" ]]; then
-  grep -qa "$GTASKS_CLIENT_ID" "$BIN" || { echo "Google client id is not in $BIN" >&2; exit 1; }
-fi
+for target in "${TARGETS[@]}"; do
+  env="${target%%:*}"
+  pio run -e "$env"
+  BIN="$ROOT/.pio/build/$env/firmware.bin"
+  grep -qa "$VERSION" "$BIN" || { echo "version $VERSION is not in $BIN" >&2; exit 1; }
+  grep -qa "$CROSSPLAY_OTA_URL" "$BIN" || { echo "feed URL is not in $BIN" >&2; exit 1; }
+  if [[ -n "${GTASKS_CLIENT_ID:-}" ]]; then
+    grep -qa "$GTASKS_CLIENT_ID" "$BIN" || { echo "Google client id is not in $BIN" >&2; exit 1; }
+  fi
+done
 echo "built v${VERSION} from $(git rev-parse --short HEAD)"
 if [[ $DRY_RUN == 1 ]]; then
   release_notes
@@ -76,8 +84,11 @@ v = "v" + os.environ["VERSION"]
 print(json.dumps({"tag_name": v, "target_commitish": head, "name": v, "body": os.environ["NOTES"], "make_latest": "true"}))')"
 RELEASE="$(curl -fsS "${AUTH[@]}" -H "Content-Type: application/json" -X POST "https://api.github.com/repos/${REPO}/releases" -d "$BODY")"
 ID="$(printf '%s' "$RELEASE" | python3 -c 'import json,sys; print(json.load(sys.stdin)["id"])')"
-# The x4pro updater asks for the literal asset name firmware.bin
-# (CROSSPOINT_RELEASE_ASSET in FirmwareBoardTag.h).
-curl -fsS "${AUTH[@]}" -H "Content-Type: application/octet-stream" --data-binary @"$BIN" \
-  "https://uploads.github.com/repos/${REPO}/releases/${ID}/assets?name=firmware.bin" >/dev/null
+for target in "${TARGETS[@]}"; do
+  env="${target%%:*}"
+  asset="${target#*:}"
+  curl -fsS "${AUTH[@]}" -H "Content-Type: application/octet-stream" \
+    --data-binary @"$ROOT/.pio/build/$env/firmware.bin" \
+    "https://uploads.github.com/repos/${REPO}/releases/${ID}/assets?name=${asset}" >/dev/null
+done
 echo "published v${VERSION}: https://github.com/${REPO}/releases/tag/v${VERSION}"
