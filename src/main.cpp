@@ -698,6 +698,14 @@ void setup() {
   LOG_INF("MAIN", "Device: %s", BoardConfig::ACTIVE.name);
 #endif
 
+#if FREEINK_DEVICE_STICKY
+  // FORK CHANGE: the Sticky's MicroSD shares the panel's SPI bus, and at the
+  // SDK's 40 MHz defaults every SD write failed on a retail unit while reads
+  // still worked. 10 MHz is the clock Seeed's own demo runs that bus at.
+  BoardConfig::ACTIVE.sd.spiHz = 10000000;
+  BoardConfig::ACTIVE.displaySpiHz = 10000000;
+#endif
+
   // SD Card Initialization
   // We need 6 open files concurrently when parsing a new chapter
   if (!Storage.begin()) {
