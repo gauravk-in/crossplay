@@ -1,0 +1,7 @@
+# Icons for the Bambu app, generated into src/apps_local/bambu/BambuIcons.h by
+# tools_local/bambu/gen_icons.sh. Format: alias = lucide-name.
+
+# The shelf row: a filament spool is what every Bambu screen is about.
+bambu       = spool
+# The header's way to the phone page.
+b_phone     = smartphone

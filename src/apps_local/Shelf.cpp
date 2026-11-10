@@ -12,6 +12,8 @@
 #include "ShelfFolderActivity.h"
 #include "ShelfHidden.h"
 #include "ShelfState.h"
+#include "bambu/BambuActivity.h"
+#include "bambu/BambuIcons.h"
 #include "battleship/BattleshipActivity.h"
 #include "calculator/CalculatorActivity.h"
 #include "checkers/CheckersActivity.h"
@@ -88,6 +90,7 @@ constexpr shelf::Item kApps[] = {
     {"WALLPAPERS", &icon_wallpapers_32, &WallpapersActivity::create},
     {"WIKIPEDIA", &icon_wikipedia_32, &WikipediaActivity::create},
     {"CALCULATOR", &icon_calculator_32, &CalculatorActivity::create},
+    {"BAMBU", &icon_bambu_32, &BambuActivity::create},
     // Card #516. The icon is the Lucide list mark borrowed from Murdle while
     // the screens are being chosen; a Notes mark comes with the real app.
     {"NOTES", &icon_murdle_face_clues_32, &NotesActivity::create},
