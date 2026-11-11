@@ -198,7 +198,28 @@ function cloudCall(path, body) {
       fillCloud(a);
       cloudSay(a.message);
     })
-    .catch(function () { $('signin').disabled = false; cloudSay('The reader did not answer. Try again.'); });
+    .catch(function () {
+      // The phone can stop waiting before the reader is done with Bambu, so
+      // ask the reader whether the sign-in went through after all.
+      cloudSay('The reader is slow to answer. Checking whether it signed in');
+      setTimeout(function () {
+        fetch('/bambu/config', {cache: 'no-store'})
+          .then(function (r) { if (!r.ok) throw new Error(r.status); return r.text(); })
+          .then(function (t) {
+            var cfg = parse(t);
+            $('signin').disabled = false;
+            if (cfg.cloud_email && path !== '/bambu/cloud/signout') {
+              codeEmail = ''; $('password').value = ''; $('code').value = '';
+              $('code-row').style.display = 'none'; $('signin').textContent = 'Sign in';
+              fill(cfg);
+              cloudSay('Signed in.');
+            } else {
+              cloudSay('The reader did not answer. Try again.');
+            }
+          })
+          .catch(function () { $('signin').disabled = false; cloudSay('The reader did not answer. Try again.'); });
+      }, 3000);
+    });
 }
 $('signin').addEventListener('click', function () {
   var email = clean($('email').value);

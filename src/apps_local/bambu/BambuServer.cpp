@@ -40,6 +40,11 @@ std::string trimmed(const std::string& s) {
   return s.substr(a, b - a);
 }
 
+// Closes the Bambu connection a sign-in kept open, however the handler returns.
+struct HangUp {
+  ~HangUp() { bambu::cloud::hangUp(); }
+};
+
 std::string noLineBreaks(std::string s) {
   for (char& c : s) {
     if (c == '\n' || c == '\r' || c == '|') c = ' ';
@@ -173,6 +178,7 @@ void BambuServer::handleSignIn() {
     answer("error", "Fill in your Bambu email and password.");
     return;
   }
+  const HangUp hangUp;
   bambu::cloud::Account account;
   std::string message;
   switch (bambu::cloud::signIn(email, password, account, message)) {
@@ -206,6 +212,7 @@ void BambuServer::handleCode() {
     answer("error", "Type in the code from the email.");
     return;
   }
+  const HangUp hangUp;
   bambu::cloud::Account account;
   std::string message;
   if (bambu::cloud::signInWithCode(email, code, account, message) != bambu::cloud::Login::Token) {
