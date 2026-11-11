@@ -33,6 +33,8 @@ int listPrinters(const Account&, Printer*, int, std::string& message) {
   return -1;
 }
 
+void hangUp() {}
+
 #else
 
 }  // namespace cloud
@@ -41,7 +43,11 @@ int listPrinters(const Account&, Printer*, int, std::string& message) {
 #include "BambuCloudRoots.h"
 
 #if defined(FREEINK_NET_WOLFSSL)
+#include <Memory.h>
 #include <SecureHttpClient.h>
+#include <WiFi.h>
+
+#include <memory>
 #endif
 
 namespace bambu {
@@ -59,43 +65,73 @@ constexpr const char* kBindPath = "/v1/iot-service/api/user/bind";
 // bot filter that turns away clients it does not recognise.
 constexpr const char* kUserAgent = "bambu_network_agent/01.09.05.01";
 
+#if defined(FREEINK_NET_WOLFSSL)
+// One connection for the requests of one sign-in: the code login, the account
+// lookup and the printer list then share a single TLS handshake. hangUp()
+// releases it.
+std::unique_ptr<freeink::SecureHttpClient> link;
+#endif
+
 // One request, the whole reply in `body`. The status, or 0 when nothing came
-// back, with `message` set.
+// back, with `message` set. `step` finishes "while ..." in that message, so a
+// report says which request failed. `retry` repeats a request that got no
+// answer once, for requests that are safe to send twice.
 int call(const char* method, const char* path, const std::string& token, const std::string& payload, std::string& body,
-         std::string& message) {
+         std::string& message, const char* step, const bool retry) {
   body.clear();
 #if !defined(FREEINK_NET_WOLFSSL)
   (void)method;
   (void)path;
   (void)token;
   (void)payload;
+  (void)step;
+  (void)retry;
   message = "This build has no TLS, so it cannot reach Bambu.";
   return 0;
 #else
-  freeink::SecureHttpClient http;
-  http.setCACert(caRoots());
-  http.setTimeout(20000);
-  http.setFollowRedirects(1);
-  if (!http.begin(std::string("https://") + kApiHost + path)) {
-    message = "The reader could not make sense of Bambu's address.";
-    return 0;
+  if (!link) {
+    link = makeUniqueNoThrow<freeink::SecureHttpClient>();
+    if (!link) {
+      LOG_ERR("BAMBU", "OOM: SecureHttpClient");
+      message = "The reader ran out of memory while " + std::string(step) + ". Try again.";
+      return 0;
+    }
+    link->setCACert(caRoots());
+    link->setTimeout(20000);
+    link->setFollowRedirects(1);
+    link->setUserAgent(kUserAgent);
   }
-  http.setUserAgent(kUserAgent);
-  http.addHeader("Accept", "application/json");
-  if (!payload.empty()) http.addHeader("Content-Type", "application/json");
-  if (!token.empty()) http.addHeader("Authorization", "Bearer " + token);
-  // Neither the password nor the token is logged: the path is enough.
-  LOG_INF("BAMBU", "%s %s", method, path);
-  const int status = payload.empty() ? http.sendRequest(method, std::string()) : http.sendRequest(method, payload);
-  if (status <= 0) {
-    LOG_ERR("BAMBU", "%s %s failed: %d", method, path, status);
-    message = "Could not reach Bambu. Check the reader's Wi-Fi, and that its clock is set, and try again.";
+  freeink::SecureHttpClient& http = *link;
+  int status = 0;
+  for (int attempt = 0; attempt < (retry ? 2 : 1); ++attempt) {
+    if (!http.begin(std::string("https://") + kApiHost + path)) {
+      message = "The reader could not make sense of Bambu's address.";
+      return 0;
+    }
+    http.addHeader("Accept", "application/json");
+    if (!payload.empty()) http.addHeader("Content-Type", "application/json");
+    if (!token.empty()) http.addHeader("Authorization", "Bearer " + token);
+    // Neither the password nor the token is logged: the path is enough.
+    LOG_INF("BAMBU", "%s %s", method, path);
+    const uint32_t started = millis();
+    status = payload.empty() ? http.sendRequest(method, std::string()) : http.sendRequest(method, payload);
+    if (status > 0) break;
+    LOG_ERR("BAMBU", "%s %s failed after %lu ms: %d, Wi-Fi %d, heap %u", method, path,
+            static_cast<unsigned long>(millis() - started), status, static_cast<int>(WiFi.status()),
+            static_cast<unsigned>(ESP.getFreeHeap()));
     http.end();
+  }
+  if (status <= 0) {
+    if (WiFi.status() != WL_CONNECTED) {
+      message = "The reader lost its Wi-Fi while " + std::string(step) + ". Try again.";
+    } else {
+      message =
+          "Bambu did not answer while " + std::string(step) + ". Check that the reader's clock is set, and try again.";
+    }
     return 0;
   }
   body = http.getString();
   if (body.size() > kMaxResponseBytes) body.resize(kMaxResponseBytes);
-  http.end();
   LOG_INF("BAMBU", "%s %s -> %d (%u bytes)", method, path, status, static_cast<unsigned>(body.size()));
   return status;
 #endif
@@ -109,7 +145,8 @@ bool finish(const std::string& email, const std::string& token, const std::strin
   next.token = token;
   if (!readToken(token, next.user, next.expires)) {
     std::string body;
-    const int status = call("GET", kPreferencePath, token, std::string(), body, message);
+    const int status =
+        call("GET", kPreferencePath, token, std::string(), body, message, "asking which account it is", true);
     if (status == 0) return false;
     next.user = userFromPreference(body);
     if (next.user.empty()) {
@@ -154,12 +191,14 @@ const char* caRoots() {
 
 Login signIn(const std::string& email, const std::string& password, Account& account, std::string& message) {
   std::string body;
-  const int status = call("POST", kLoginPath, std::string(), loginBody(email, password), body, message);
+  const int status =
+      call("POST", kLoginPath, std::string(), loginBody(email, password), body, message, "signing in", true);
   if (status == 0) return Login::Refused;
   const Login result = settle(email, status, body, account, message);
   if (result != Login::NeedCode) return result;
   std::string ignored;
-  const int sent = call("POST", kSendCodePath, std::string(), sendCodeBody(email), ignored, message);
+  const int sent =
+      call("POST", kSendCodePath, std::string(), sendCodeBody(email), ignored, message, "asking for a code", false);
   if (sent < 200 || sent >= 300) {
     if (sent != 0) message = "Bambu wants a code from your email but would not send one. Try again in a minute.";
     return Login::Refused;
@@ -169,14 +208,19 @@ Login signIn(const std::string& email, const std::string& password, Account& acc
 
 Login signInWithCode(const std::string& email, const std::string& code, Account& account, std::string& message) {
   std::string body;
-  const int status = call("POST", kLoginPath, std::string(), codeLoginBody(email, code), body, message);
-  if (status == 0) return Login::Refused;
+  // Not repeated: a code Bambu took but whose answer was lost is spent.
+  const int status =
+      call("POST", kLoginPath, std::string(), codeLoginBody(email, code), body, message, "checking the code", false);
+  if (status == 0) {
+    message += " If it then says the code is wrong, start over with your email and password.";
+    return Login::Refused;
+  }
   const Login result = settle(email, status, body, account, message);
   // An expired code: readLogin's sentence promises a new one, so send it.
   if (result == Login::Refused && status == 400 && jsonValue(body, "code") == "1") {
     std::string ignored;
     std::string unused;
-    call("POST", kSendCodePath, std::string(), sendCodeBody(email), ignored, unused);
+    call("POST", kSendCodePath, std::string(), sendCodeBody(email), ignored, unused, "asking for a new code", false);
   }
   if (result == Login::NeedCode) {
     message = "Bambu asked for a code again. Start over with your email and password.";
@@ -187,7 +231,7 @@ Login signInWithCode(const std::string& email, const std::string& code, Account&
 
 int listPrinters(const Account& account, Printer* out, const int max, std::string& message) {
   std::string body;
-  const int status = call("GET", kBindPath, account.token, std::string(), body, message);
+  const int status = call("GET", kBindPath, account.token, std::string(), body, message, "listing your printers", true);
   if (status == 0) return -1;
   if (status == 401 || status == 403) {
     message = "Bambu has signed this reader out. Sign in again on the phone page.";
@@ -198,6 +242,12 @@ int listPrinters(const Account& account, Printer* out, const int max, std::strin
     return -1;
   }
   return readPrinters(body, out, max);
+}
+
+void hangUp() {
+#if defined(FREEINK_NET_WOLFSSL)
+  link.reset();
+#endif
 }
 
 #endif  // BAMBU_CLOUD

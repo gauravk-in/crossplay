@@ -26,6 +26,8 @@ Login signIn(const std::string& email, const std::string& password, Account& acc
 Login signInWithCode(const std::string& email, const std::string& code, Account& account, std::string& message);
 // The printers bound to the account. -1 on failure, with `message` set.
 int listPrinters(const Account& account, Printer* out, int max, std::string& message);
+// Closes the connection the calls above keep open between them.
+void hangUp();
 
 }  // namespace cloud
 }  // namespace bambu
