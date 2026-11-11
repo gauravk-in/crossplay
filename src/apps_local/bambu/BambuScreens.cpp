@@ -456,14 +456,17 @@ void buildSetup(toybox::Screen& screen) {
   const int16_t small = lineHeight(screen, toybox::kTileFont);
   line(screen, fui::makeRect(toybox::kMargin, y, width, small), "WATCH YOUR PRINTER FROM HERE", toybox::kTileFont);
   y = static_cast<int16_t>(y + small + toybox::kGutter);
-  y = static_cast<int16_t>(
-      y + prose(screen, fui::makeRect(toybox::kMargin, y, width, static_cast<int16_t>(footer.y - y)),
-                "It reads the printer over your Wi-Fi, the way Bambu Studio does in LAN mode.", toybox::kBodyFont));
+  y = static_cast<int16_t>(y + prose(screen,
+                                     fui::makeRect(toybox::kMargin, y, width, static_cast<int16_t>(footer.y - y)),
+                                     "It reads the printer over your Wi-Fi, the way Bambu Studio does in LAN mode, or "
+                                     "through your Bambu account when you are away.",
+                                     toybox::kBodyFont));
   y = static_cast<int16_t>(y + toybox::kGutter * 2);
   // Where each of the three things is, on the printer's own screen.
   static constexpr const char* kWhere[][2] = {
       {"IP ADDRESS AND ACCESS CODE", "Settings > Network, or WLAN on the A1."},
       {"SERIAL NUMBER", "Settings > Device, or the sticker on the back."},
+      {"AWAY FROM HOME", "Sign in to your Bambu account on the same page as well."},
       {"THEN", "Tap below and point your phone's camera at the code to type them in."},
   };
   for (const auto& where : kWhere) {

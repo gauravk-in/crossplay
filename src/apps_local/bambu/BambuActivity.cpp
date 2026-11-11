@@ -19,6 +19,7 @@
 #include "../Shelf.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxTheme.h"
+#include "BambuLink.h"
 #include "BambuStore.h"
 
 namespace fui = freeink::ui;
@@ -32,6 +33,10 @@ constexpr unsigned long kJoinTimeoutMs = 20000;
 constexpr unsigned long kTickPaintMs = 20000;
 // The card gets the last state at most this often, and on the way out.
 constexpr unsigned long kSaveEveryMs = 5UL * 60UL * 1000UL;
+// After the LAN fails with the cloud to fall back on, the LAN is not tried
+// again for this long, so a reader away from home does not spend ten seconds
+// of every reconnect on an address that is not there.
+constexpr unsigned long kLocalRetryMs = 10UL * 60UL * 1000UL;
 // A clean refresh every this many paints, fast ones between.
 constexpr int kCleanEvery = 10;
 
@@ -103,7 +108,11 @@ void BambuActivity::onExit() {
 
 void BambuActivity::loadConfig() {
   config_ = bambu::parseConfig(bambu::store::read(bambu::store::kConfigPath, bambu::kMaxConfigBytes));
-  configured_ = bambu::isComplete(config_);
+#if BAMBU_CLOUD
+  account_ = bambu::cloud::parseAccount(bambu::store::read(bambu::store::kCloudPath, bambu::cloud::kMaxFileBytes));
+#endif
+  configured_ =
+      bambu::isComplete(config_) || (BAMBU_CLOUD && !config_.serial.empty() && bambu::cloud::signedIn(account_));
 }
 
 void BambuActivity::saveSnapshot(const bool force) {
@@ -194,13 +203,39 @@ void BambuActivity::runConnect() {
     return;
   }
 
-  const bool ok = link_.connect(
-      config_, clientId_,
-      [this] {
-        pumpInput();
-        return cancel_;
-      },
-      why);
+  const auto abort = [this] {
+    pumpInput();
+    return cancel_;
+  };
+  const bool canLocal = bambu::isComplete(config_);
+  const bool canCloud = BAMBU_CLOUD && !config_.serial.empty() && bambu::cloud::signedIn(account_);
+  const bool localRecentlyFailed = localFailedAt_ != 0 && millis() - localFailedAt_ < kLocalRetryMs;
+  bool ok = false;
+  bool cloud = false;
+  if (canLocal && !(canCloud && localRecentlyFailed)) {
+    ok = link_.connect(bambu::localTarget(config_), clientId_, abort, why);
+    if (ok) {
+      localFailedAt_ = 0;
+    } else if (!cancel_) {
+      localFailedAt_ = millis();
+      if (localFailedAt_ == 0) localFailedAt_ = 1;
+      LOG_ERR("BAMBU", "LAN connect failed: %s", why.c_str());
+    }
+  }
+  if (!ok && !cancel_ && canCloud) {
+    {
+      RenderLock lock(*this);
+      tryingCloud_ = true;
+    }
+    if (canLocal) requestUpdate();
+    ok = link_.connect(bambu::cloudTarget(config_, account_), clientId_, abort, why);
+    cloud = ok;
+  }
+  {
+    RenderLock lock(*this);
+    tryingCloud_ = false;
+    viaCloud_ = cloud;
+  }
   if (cancel_) {
     link_.stop();
     {
@@ -215,7 +250,7 @@ void BambuActivity::runConnect() {
     dropLink(why);
     return;
   }
-  LOG_INF("BAMBU", "connected to %s", config_.host.c_str());
+  LOG_INF("BAMBU", "connected %s", viaCloud_ ? "through Bambu's cloud" : config_.host.c_str());
   {
     RenderLock lock(*this);
     connecting_ = false;
@@ -469,6 +504,7 @@ void BambuActivity::loop() {
         RenderLock lock(*this);
         const bambu::Config before = config_;
         loadConfig();
+        localFailedAt_ = 0;
         // A different printer is a different state.
         if (before.host != config_.host || before.serial != config_.serial) {
           working_ = bambu::PrinterState{};
@@ -536,8 +572,11 @@ void BambuActivity::loop() {
 // --- Render --------------------------------------------------------------
 
 std::string BambuActivity::linkText() const {
-  if (connecting_) return "CONNECTING TO " + config_.host;
-  if (live_) return "LIVE  /  " + config_.host;
+  if (connecting_) {
+    if (tryingCloud_ || !bambu::isComplete(config_)) return "CONNECTING THROUGH BAMBU CLOUD";
+    return "CONNECTING TO " + config_.host;
+  }
+  if (live_) return viaCloud_ ? "LIVE  /  BAMBU CLOUD" : "LIVE  /  " + config_.host;
   return nextConnectAt_ != 0 ? "NOT LIVE  /  TRYING AGAIN SOON" : "NOT LIVE  /  TAP TO TRY AGAIN";
 }
 

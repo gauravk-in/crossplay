@@ -6,6 +6,8 @@
 
 #include <new>
 
+#include "BambuCloudApi.h"
+
 #if defined(FREEINK_NET_WOLFSSL)
 #include <SecureClient.h>
 #endif
@@ -75,12 +77,31 @@ struct Link::Impl {
   }
 };
 
+Target localTarget(const Config& config) {
+  Target target;
+  target.host = config.host;
+  target.user = kUser;
+  target.password = config.accessCode;
+  target.serial = config.serial;
+  return target;
+}
+
+Target cloudTarget(const Config& config, const cloud::Account& account) {
+  Target target;
+  target.host = cloud::kMqttHost;
+  target.user = account.user;
+  target.password = account.token;
+  target.serial = config.serial;
+  target.cloud = true;
+  return target;
+}
+
 Link::Link() : impl_(new (std::nothrow) Impl()) {}
 Link::~Link() { stop(); }
 
 bool Link::connected() const { return impl_ && impl_->up; }
 
-bool Link::connect(const Config& config, const std::string& clientId, const AbortCallback& shouldAbort,
+bool Link::connect(const Target& target, const std::string& clientId, const AbortCallback& shouldAbort,
                    std::string& why) {
   stop();
   if (!impl_) {
@@ -88,7 +109,7 @@ bool Link::connect(const Config& config, const std::string& clientId, const Abor
     return false;
   }
 #if !defined(FREEINK_NET_WOLFSSL)
-  (void)config;
+  (void)target;
   (void)clientId;
   (void)shouldAbort;
   why = "This build has no TLS, so it cannot reach the printer.";
@@ -101,30 +122,39 @@ bool Link::connect(const Config& config, const std::string& clientId, const Abor
     why = "There was not enough memory to connect.";
     return false;
   }
-  m.serial = config.serial;
-  m.client.setInsecure();
+  m.serial = target.serial;
+  if (target.cloud) {
+    m.client.setCACert(cloud::caRoots());
+  } else {
+    m.client.setInsecure();
+  }
   m.client.setTimeout(kStepTimeoutMs);
   if (shouldAbort) m.client.setAbortCallback(shouldAbort);
-  if (!m.client.connect(config.host.c_str(), kPort)) {
+  if (!m.client.connect(target.host.c_str(), kPort)) {
     if (m.client.aborted()) {
       why = "Stopped.";
+    } else if (target.cloud) {
+      why =
+          "Bambu's cloud did not answer, or its certificate could not be checked. Check the reader's Wi-Fi and "
+          "that its clock is set.";
     } else {
-      why = "The printer at " + config.host +
+      why = "The printer at " + target.host +
             " did not answer. Check the address, that it is on, and that the reader is on the same Wi-Fi.";
     }
     m.client.stop();
     return false;
   }
-  LOG_INF("BAMBU", "TLS up to %s", config.host.c_str());
+  LOG_INF("BAMBU", "TLS up to %s", target.host.c_str());
 
-  if (!m.send(mqtt::connectPacket(clientId, kUser, config.accessCode, kKeepAliveSeconds))) {
+  if (!m.send(mqtt::connectPacket(clientId, target.user, target.password, kKeepAliveSeconds))) {
     why = "The printer closed the connection.";
     m.client.stop();
     return false;
   }
   uint8_t ack[4] = {};
   if (!m.readExact(ack, sizeof(ack), millis() + kStepTimeoutMs, shouldAbort)) {
-    why = "The printer accepted the connection but never answered it. Try LAN-only mode on the printer.";
+    why = target.cloud ? "Bambu's cloud accepted the connection but never answered it. Try again later."
+                       : "The printer accepted the connection but never answered it. Try LAN-only mode on the printer.";
     m.client.stop();
     return false;
   }
@@ -135,12 +165,14 @@ bool Link::connect(const Config& config, const std::string& clientId, const Abor
   }
   if (ack[3] != 0) {
     LOG_ERR("BAMBU", "CONNACK %u", static_cast<unsigned>(ack[3]));
-    why = mqtt::connAckReason(ack[3]);
+    why = target.cloud && (ack[3] == 4 || ack[3] == 5)
+              ? "Bambu has signed this reader out. Sign in again on the phone page."
+              : mqtt::connAckReason(ack[3]);
     m.client.stop();
     return false;
   }
-  if (!m.send(mqtt::subscribePacket(1, mqtt::reportTopic(config.serial))) ||
-      !m.send(mqtt::publishPacket(mqtt::requestTopic(config.serial), mqtt::pushAllPayload()))) {
+  if (!m.send(mqtt::subscribePacket(1, mqtt::reportTopic(target.serial))) ||
+      !m.send(mqtt::publishPacket(mqtt::requestTopic(target.serial), mqtt::pushAllPayload()))) {
     why = "The printer closed the connection.";
     m.client.stop();
     return false;

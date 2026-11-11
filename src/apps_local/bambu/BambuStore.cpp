@@ -42,5 +42,7 @@ bool write(const char* path, const std::string& text) {
   return true;
 }
 
+bool remove(const char* path) { return !Storage.exists(path) || Storage.remove(path); }
+
 }  // namespace store
 }  // namespace bambu

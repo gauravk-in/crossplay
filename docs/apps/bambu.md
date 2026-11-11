@@ -31,13 +31,42 @@ PUBLISH   device/<serial>/request  {"pushing":{"command":"pushall",...}}
   not the address, so it is not verified: the same trust Bambu Studio gives a
   printer in LAN mode. The access code is what keeps others off.
 
-### Why not Bambu's cloud MQTT
+### Away from home: Bambu's cloud
 
-`us.mqtt.bambulab.com` would work away from home, but it needs the Bambu
-account's email and password plus an emailed code on the reader, and the token
-it hands back expires after about three months. The packets are the same, so
-it can be added as a second way in later; it is not here because the LAN way
-needs no account at all.
+The printer also keeps a connection open to Bambu's own broker and publishes
+the same reports there. With a Bambu account signed in, the reader uses it
+when the LAN does not answer:
+
+```
+TLS to us.mqtt.bambulab.com:8883   user "u_<account number>", password = access token
+SUBSCRIBE / PUBLISH as on the LAN
+```
+
+- The LAN is tried first when it is set up. After it fails with the cloud to
+  fall back on, it is left alone for ten minutes, so a reader away from home
+  does not spend ten seconds of every reconnect on it.
+- Signing in is on the phone page, and the reader makes the requests itself
+  (`BambuCloudApi`): `POST api.bambulab.com/v1/user-service/user/login` with
+  the email and password; when Bambu answers `loginType: verifyCode`, it asks
+  Bambu to email a code (`/user/sendemail/code`) and the page asks for it. The
+  user name comes from the token (a JWT naming `username`), or else from
+  `/v1/design-user-service/my/preference`.
+- The printers on the account (`/v1/iot-service/api/user/bind`) fill in the
+  serial and the LAN access code when the settings have none, so only the IP
+  address is left to type for the LAN.
+- The token goes to `/.crosspoint/bambu/cloud.txt`, which the phone page never
+  reads back; the page is told the email and the expiry. The password is
+  passed through to Bambu and not kept. It travels from the phone to the
+  reader over the LAN in plain HTTP, like the access code does.
+- The API and the broker are verified against `BambuCloudRoots.h`, a bundle of
+  the common public roots, because Bambu does not say which CA it uses. A PEM
+  bundle at `/.crosspoint/bambu/.roots.pem` wins over it.
+- The token lasts about three months. When the broker refuses it, the screen
+  says to sign in again.
+- None of this is a published API. It is what Bambu's apps and the Home
+  Assistant integration use, and Bambu can change it. Accounts with
+  authenticator-app sign-in (TFA) are refused with a sentence; China-region
+  accounts (`api.bambulab.cn`) are not supported.
 
 ### Firmware caveats
 
@@ -60,7 +89,8 @@ access_code=12345678
 keep_awake=1
 ```
 
-The file can be written by hand too. Every value is trimmed and capped, and the
+The file can be written by hand too. With a Bambu account signed in, `serial`
+alone is enough. Every value is trimmed and capped, and the
 serial is upper-cased.
 
 ## The screen
@@ -94,7 +124,8 @@ it, marked not live, while the radio comes up.
 
 ## Not done
 
-- Not tested against a real printer yet; built and host-tested only.
+- Not tested against a real printer or a real Bambu account yet; built and
+  host-tested only.
 - No sleep-screen source, and no fetching while the reader sleeps.
 - HMS error codes are not decoded: a print error shows as `ERROR` beside the
   stage.

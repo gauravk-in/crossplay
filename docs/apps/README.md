@@ -26,7 +26,7 @@ upstream's and covers the reader, not these.
 | [`weather.md`](weather.md) | Today, the next 24 hours and ten days from Open-Meteo, fetched once a day. |
 | [`mathquiz.md`](mathquiz.md) | Sums by school class, and the score and speed charts. |
 | [`chesspuz.md`](chesspuz.md) | Checkmate: the mate puzzles, hints, and the daily score. |
-| [`bambu.md`](bambu.md) | A Bambu Lab printer's progress and AMS over LAN MQTT: the connection, the setup, the screen. |
+| [`bambu.md`](bambu.md) | A Bambu Lab printer's progress and AMS over LAN MQTT or Bambu's cloud: the connections, the setup, the screen. |
 
 ## The rules a game implements
 

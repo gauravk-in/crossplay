@@ -7,9 +7,11 @@
 // a ReportParser as the bytes arrive. A 30KB report never sits in memory
 // whole: the largest buffer here is one read chunk.
 //
-// The printer's certificate is signed by Bambu's own CA and names the serial,
-// not the address, so it is not verified. That is the same trust Bambu Studio
-// gives a printer in LAN mode, and the access code is what keeps strangers off.
+// Two places to reach it. On the LAN the printer's certificate is signed by
+// Bambu's own CA and names the serial, not the address, so it is not
+// verified: the same trust Bambu Studio gives a printer in LAN mode, and the
+// access code is what keeps strangers off. Through Bambu's cloud broker the
+// password is the account's token, so that certificate is verified.
 //
 // Device only: the simulator has no TLS stack, and connect() says so.
 
@@ -18,9 +20,21 @@
 #include <memory>
 #include <string>
 
+#include "BambuCloud.h"
 #include "BambuCore.h"
 
 namespace bambu {
+
+// Where to connect and as whom.
+struct Target {
+  std::string host;
+  std::string user;
+  std::string password;
+  std::string serial;
+  bool cloud = false;  // Bambu's broker, verified, rather than the printer itself
+};
+Target localTarget(const Config& config);
+Target cloudTarget(const Config& config, const cloud::Account& account);
 
 class Link {
  public:
@@ -34,7 +48,7 @@ class Link {
   // TCP, TLS, CONNECT and CONNACK, SUBSCRIBE, pushall. Blocks for at most a
   // few seconds per step; `shouldAbort` is polled throughout. False with `why`
   // set in a sentence a person can act on.
-  bool connect(const Config& config, const std::string& clientId, const AbortCallback& shouldAbort, std::string& why);
+  bool connect(const Target& target, const std::string& clientId, const AbortCallback& shouldAbort, std::string& why);
 
   enum class Poll : uint8_t { Idle, Changed, Dropped };
   // Reads what has arrived, merging any report into `state`. Keeps the
