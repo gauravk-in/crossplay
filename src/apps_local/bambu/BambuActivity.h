@@ -66,6 +66,9 @@ class BambuActivity final : public Activity {
   void maybeRepaint();
   void pumpInput();
   bool joinWifi(std::string& why);
+  // Signed in with no serial yet: takes the account's printer. False, with
+  // `why`, when the account lists none or Bambu cannot be asked.
+  bool pickCloudPrinter(std::string& why);
   void releaseWifi();
 
   void startPhone();

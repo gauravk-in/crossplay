@@ -19,6 +19,7 @@
 #include "../Shelf.h"
 #include "../ui/ToyboxFonts.h"
 #include "../ui/ToyboxTheme.h"
+#include "BambuCloudApi.h"
 #include "BambuLink.h"
 #include "BambuStore.h"
 
@@ -111,8 +112,9 @@ void BambuActivity::loadConfig() {
 #if BAMBU_CLOUD
   account_ = bambu::cloud::parseAccount(bambu::store::read(bambu::store::kCloudPath, bambu::cloud::kMaxFileBytes));
 #endif
-  configured_ =
-      bambu::isComplete(config_) || (BAMBU_CLOUD && !config_.serial.empty() && bambu::cloud::signedIn(account_));
+  // Signed in is enough: runConnect asks the account for the serial when the
+  // phone page did not get to fill it in.
+  configured_ = bambu::isComplete(config_) || (BAMBU_CLOUD && bambu::cloud::signedIn(account_));
 }
 
 void BambuActivity::saveSnapshot(const bool force) {
@@ -203,6 +205,14 @@ void BambuActivity::runConnect() {
     return;
   }
 
+#if BAMBU_CLOUD
+  if (config_.serial.empty() && bambu::cloud::signedIn(account_) && !pickCloudPrinter(why)) {
+    LOG_ERR("BAMBU", "no printer from the account: %s", why.c_str());
+    dropLink(why);
+    return;
+  }
+#endif
+
   const auto abort = [this] {
     pumpInput();
     return cancel_;
@@ -261,6 +271,45 @@ void BambuActivity::runConnect() {
     dirty_ = true;
     urgent_ = true;
   }
+}
+
+bool BambuActivity::pickCloudPrinter(std::string& why) {
+#if BAMBU_CLOUD
+  // Heap, not stack: eight printers' strings are over a kilobyte.
+  auto printers = makeUniqueNoThrow<bambu::cloud::Printer[]>(bambu::cloud::kMaxPrinters);
+  if (!printers) {
+    LOG_ERR("BAMBU", "OOM: printer list");
+    why = "There was not enough memory to ask Bambu for your printer.";
+    return false;
+  }
+  const int count = bambu::cloud::listPrinters(account_, printers.get(), bambu::cloud::kMaxPrinters, why);
+  bambu::cloud::hangUp();
+  if (count < 0) return false;
+  if (count == 0) {
+    why = "Your Bambu account has no printer on it. Add it in Bambu Handy first.";
+    return false;
+  }
+  int pick = 0;
+  for (int i = 0; i < count; ++i) {
+    if (printers[i].online) {
+      pick = i;
+      break;
+    }
+  }
+  bambu::Config next = config_;
+  next.serial = printers[pick].serial;
+  if (next.accessCode.empty()) next.accessCode = printers[pick].accessCode;
+  if (!bambu::store::write(bambu::store::kConfigPath, bambu::formatConfig(next))) {
+    LOG_ERR("BAMBU", "config.txt was not updated from the account");
+  }
+  RenderLock lock(*this);
+  config_ = next;
+  LOG_INF("BAMBU", "took printer %s from the account (%d listed)", config_.serial.c_str(), count);
+  return true;
+#else
+  why = "This reader's firmware has no room for Bambu's cloud.";
+  return false;
+#endif
 }
 
 void BambuActivity::dropLink(const std::string& why) {
