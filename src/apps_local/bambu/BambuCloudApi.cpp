@@ -97,7 +97,9 @@ int call(const char* method, const char* path, const std::string& token, const s
       return 0;
     }
     link->setCACert(caRoots());
-    link->setTimeout(20000);
+    // Short enough that a Bambu that stops answering frees the reader in
+    // well under a minute: every request here blocks its loop.
+    link->setTimeout(12000);
     link->setFollowRedirects(1);
     link->setUserAgent(kUserAgent);
   }
@@ -192,7 +194,7 @@ const char* caRoots() {
 Login signIn(const std::string& email, const std::string& password, Account& account, std::string& message) {
   std::string body;
   const int status =
-      call("POST", kLoginPath, std::string(), loginBody(email, password), body, message, "signing in", true);
+      call("POST", kLoginPath, std::string(), loginBody(email, password), body, message, "signing in", false);
   if (status == 0) return Login::Refused;
   const Login result = settle(email, status, body, account, message);
   if (result != Login::NeedCode) return result;

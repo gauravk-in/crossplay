@@ -504,8 +504,11 @@ fui::Rect buildPhone(toybox::Screen& screen, const PhoneModel& model) {
   line(screen, url, model.readable, toybox::kTileFont, fui::TextAlign::Center);
   const fui::Rect state =
       fui::makeRect(toybox::kMargin, static_cast<int16_t>(url.y + url.height + toybox::kGutter), width, small);
-  line(screen, state, model.saved ? "SAVED FROM YOUR PHONE" : "WAITING FOR YOUR PHONE", toybox::kTileFont,
-       fui::TextAlign::Center);
+  line(screen, state,
+       model.busy    ? "TALKING TO BAMBU, ONE MOMENT"
+       : model.saved ? "SAVED FROM YOUR PHONE"
+                     : "WAITING FOR YOUR PHONE",
+       toybox::kTileFont, fui::TextAlign::Center);
 
   footerButton(screen, footer, "DONE", ActionDismiss);
   return qr;

@@ -56,6 +56,7 @@ struct PhoneModel {
   const char* url = "";       // what the QR carries
   const char* readable = "";  // what a person reads
   bool saved = false;
+  bool busy = false;  // the reader is waiting on Bambu for the phone
 };
 // Returns the square the caller draws the code into.
 fui::Rect buildPhone(toybox::Screen& screen, const PhoneModel& model);

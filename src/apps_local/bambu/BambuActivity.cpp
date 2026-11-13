@@ -464,6 +464,14 @@ void BambuActivity::startPhone() {
     return;
   }
   server_->setFacts(lastWhy_.empty() ? std::string() : "status=" + lastWhy_ + "\n");
+  server_->setBusyHook(this, [](void* ctx, const bool busy) {
+    auto* self = static_cast<BambuActivity*>(ctx);
+    {
+      RenderLock lock(*self);
+      self->phoneBusy_ = busy;
+    }
+    self->requestUpdate();
+  });
   const bool started = server_->begin();
 #ifndef SIMULATOR
   if (!started) {
@@ -674,6 +682,7 @@ void BambuActivity::render(RenderLock&&) {
       model.url = phoneUrl_.c_str();
       model.readable = phoneReadable_.c_str();
       model.saved = phoneSaved_;
+      model.busy = phoneBusy_;
       const fui::Rect qr = bambuui::buildPhone(screen, model);
       QrUtils::drawQrCode(renderer, Rect{qr.x, qr.y, qr.width, qr.height}, phoneUrl_);
       break;

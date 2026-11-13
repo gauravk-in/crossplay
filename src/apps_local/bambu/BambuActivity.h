@@ -116,6 +116,7 @@ class BambuActivity final : public Activity {
   std::unique_ptr<BambuServer> server_;
   bool devPaused_ = false;
   bool phoneSaved_ = false;
+  bool phoneBusy_ = false;
   std::string phoneUrl_;
   std::string phoneReadable_;
 
